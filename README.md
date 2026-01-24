@@ -68,6 +68,24 @@ Ensure your PostgreSQL database has:
 - Schema: `public`
 - Tables: `footwear_product_master`, `chat_history`
 
+**Run the setup script:**
+```bash
+psql -U your_username -d text_to_sql_chatbot -f database_setup.sql
+```
+
+Or manually create the chat_history table:
+```sql
+CREATE TABLE chat_history (
+    id SERIAL PRIMARY KEY,
+    session_id VARCHAR(255) NOT NULL,
+    role VARCHAR(50) NOT NULL CHECK (role IN ('user', 'assistant')),
+    content TEXT NOT NULL,
+    timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_chat_history_session ON chat_history(session_id);
+```
+
 ## Usage
 
 Run the Streamlit app:

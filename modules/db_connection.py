@@ -4,9 +4,13 @@ from psycopg2 import pool, OperationalError, DatabaseError
 from dotenv import load_dotenv
 from typing import Optional, Any
 import logging
+from pathlib import Path
 
-# Load environment variables
-load_dotenv()
+# Load environment variables from project root
+# Get the directory containing this file, then go up to project root
+current_dir = Path(__file__).resolve().parent.parent
+env_path = current_dir / '.env'
+load_dotenv(dotenv_path=env_path)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

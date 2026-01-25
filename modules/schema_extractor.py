@@ -1,12 +1,14 @@
-
 import os
 from typing import Dict, List
 from dotenv import load_dotenv
 import logging
+from pathlib import Path
 from .db_connection import get_db_instance
 
-# Load environment variables
-load_dotenv()
+# Load environment variables from project root
+current_dir = Path(__file__).resolve().parent.parent
+env_path = current_dir / '.env'
+load_dotenv(dotenv_path=env_path)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

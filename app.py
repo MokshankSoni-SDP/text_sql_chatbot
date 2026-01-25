@@ -86,12 +86,14 @@ def process_user_question(user_question: str, schema: str):
             chat_manager.insert_message(
                 st.session_state.session_id,
                 "user",
-                user_question
+                user_question,
+                llm_client=llm_client
             )
             chat_manager.insert_message(
                 st.session_state.session_id,
                 "assistant",
-                error_msg
+                error_msg,
+                llm_client=llm_client
             )
             
             return error_msg
@@ -108,12 +110,14 @@ def process_user_question(user_question: str, schema: str):
             chat_manager.insert_message(
                 st.session_state.session_id,
                 "user",
-                user_question
+                user_question,
+                llm_client=llm_client
             )
             chat_manager.insert_message(
                 st.session_state.session_id,
                 "assistant",
-                error_msg
+                error_msg,
+                llm_client=llm_client
             )
             
             return error_msg
@@ -137,16 +141,18 @@ def process_user_question(user_question: str, schema: str):
                 column_names=column_names
             )
         
-        # Store in chat history
+        # Store in chat history (with smart LLM-based summarization)
         chat_manager.insert_message(
             st.session_state.session_id,
             "user",
-            user_question
+            user_question,
+            llm_client=llm_client
         )
         chat_manager.insert_message(
             st.session_state.session_id,
             "assistant",
-            answer
+            answer,
+            llm_client=llm_client  # LLM will summarize if > 300 chars
         )
         
         return answer

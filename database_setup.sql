@@ -7,8 +7,7 @@ CREATE TABLE IF NOT EXISTS chat_history (
     session_id VARCHAR(255) NOT NULL,
     role VARCHAR(50) NOT NULL CHECK (role IN ('user', 'assistant')),
     content TEXT NOT NULL,
-    timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_session_timestamp (session_id, timestamp)
+    timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Create index for faster lookups

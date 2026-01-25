@@ -2,10 +2,13 @@ import os
 from typing import Optional, List, Dict
 from dotenv import load_dotenv
 import logging
+from pathlib import Path
 from groq import Groq
 
-# Load environment variables
-load_dotenv()
+# Load environment variables from project root
+current_dir = Path(__file__).resolve().parent.parent
+env_path = current_dir / '.env'
+load_dotenv(dotenv_path=env_path)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -26,6 +29,51 @@ class GroqLLMClient:
         self.model = os.getenv('GROQ_MODEL', 'llama-3.3-70b-versatile')
         self.client = Groq(api_key=self.api_key)
         logger.info(f"Groq client initialized with model: {self.model}")
+    
+    def summarize_text(self, text: str) -> str:
+        """
+        Intelligently summarize text using LLM to preserve key information.
+        
+        Args:
+            text: Text to summarize
+            
+        Returns:
+            str: Summarized text (or original if already short)
+        """
+        # If text is already short, return as is
+        if len(text) <= 300:
+            return text
+        
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are a text summarizer. Summarize the given text in 1-2 concise sentences. "
+                            "Keep specific numbers, filters, data findings, and key facts. "
+                            "Remove polite filler text, greetings, and unnecessary details. "
+                            "Be direct and factual."
+                        )
+                    },
+                    {
+                        "role": "user",
+                        "content": f"Summarize this: {text}"
+                    }
+                ],
+                temperature=0.1,
+                max_tokens=100
+            )
+            
+            summary = response.choices[0].message.content.strip()
+            logger.info(f"Summarized text from {len(text)} to {len(summary)} characters")
+            return summary
+            
+        except Exception as e:
+            logger.error(f"Error summarizing text: {e}")
+            # Fallback to original text if summarization fails
+            return text
     
     def text_to_sql(
         self,

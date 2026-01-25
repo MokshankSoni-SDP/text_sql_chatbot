@@ -3,10 +3,13 @@ from typing import List, Dict
 from datetime import datetime
 from dotenv import load_dotenv
 import logging
+from pathlib import Path
 from .db_connection import get_db_instance
 
-# Load environment variables
-load_dotenv()
+# Load environment variables from project root
+current_dir = Path(__file__).resolve().parent.parent
+env_path = current_dir / '.env'
+load_dotenv(dotenv_path=env_path)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -23,18 +26,31 @@ class ChatHistoryManager:
         self.db = get_db_instance()
         self.history_limit = int(os.getenv('CHAT_HISTORY_LIMIT', '5'))
     
-    def insert_message(self, session_id: str, role: str, content: str) -> bool:
+    def insert_message(self, session_id: str, role: str, content: str, llm_client=None) -> bool:
         """
-        Insert a chat message into the database.
+        Insert a chat message into the database with smart summarization.
         
         Args:
             session_id: Unique session identifier
             role: Message role ('user' or 'assistant')
             content: Message content
+            llm_client: Optional LLM client for smart summarization
             
         Returns:
             bool: True if successful, False otherwise
         """
+        # Smart summarization for long assistant responses
+        content_to_store = content
+        
+        if role == 'assistant' and len(content) > 300 and llm_client is not None:
+            try:
+                logger.info(f"📝 Summarizing long assistant response ({len(content)} chars)...")
+                content_to_store = llm_client.summarize_text(content)
+                logger.info(f"✅ Summarized to {len(content_to_store)} chars")
+            except Exception as e:
+                logger.warning(f"⚠️ Summarization failed, storing original content: {e}")
+                content_to_store = content  # Fallback to original
+        
         query = """
             INSERT INTO chat_history (session_id, role, content, timestamp)
             VALUES (%s, %s, %s, %s);
@@ -43,13 +59,24 @@ class ChatHistoryManager:
         try:
             self.db.execute_query(
                 query,
-                (session_id, role, content, datetime.now()),
+                (session_id, role, content_to_store, datetime.now()),
                 fetch=False
             )
-            logger.debug(f"Inserted {role} message for session {session_id}")
+            logger.info(f"✅ Inserted {role} message for session {session_id[:8]}...")
             return True
         except Exception as e:
-            logger.error(f"Error inserting message: {e}")
+            error_msg = str(e).lower()
+            
+            # Check for common table-related errors
+            if 'does not exist' in error_msg or 'relation' in error_msg:
+                logger.error(f"❌ chat_history table does not exist! Run fix_chat_history.sql to create it.")
+                logger.error(f"   Error: {e}")
+            elif 'permission' in error_msg:
+                logger.error(f"❌ Permission denied to insert into chat_history table")
+                logger.error(f"   Error: {e}")
+            else:
+                logger.error(f"❌ Error inserting message: {e}")
+            
             return False
     
     def get_recent_messages(self, session_id: str, limit: int = None) -> List[Dict[str, str]]:
@@ -113,29 +140,11 @@ class ChatHistoryManager:
             logger.error(f"Error clearing session history: {e}")
             return False
     
-    def get_session_count(self, session_id: str) -> int:
-        """
-        Get the total number of messages for a session.
-        
-        Args:
-            session_id: Unique session identifier
-            
-        Returns:
-            int: Number of messages
-        """
-        query = "SELECT COUNT(*) FROM chat_history WHERE session_id = %s;"
-        
-        try:
-            result = self.db.execute_query(query, (session_id,))
-            count = result[0][0] if result else 0
-            return count
-        except Exception as e:
-            logger.error(f"Error getting message count: {e}")
-            return 0
     
     def format_history_for_llm(self, session_id: str, limit: int = None) -> str:
         """
         Format chat history as a string for LLM context.
+        Note: Messages are already intelligently summarized at insert time via LLM.
         
         Args:
             session_id: Unique session identifier
@@ -144,12 +153,16 @@ class ChatHistoryManager:
         Returns:
             str: Formatted chat history
         """
+        if limit is None:
+            limit = self.history_limit
+        
         messages = self.get_recent_messages(session_id, limit)
         
         if not messages:
             return "No previous conversation history."
         
-        formatted_parts = ["PREVIOUS CONVERSATION:"]
+        formatted_parts = ["PREVIOUS CONVERSATION (Recent context):"]
+        
         for msg in messages:
             role = msg['role'].upper()
             content = msg['content']

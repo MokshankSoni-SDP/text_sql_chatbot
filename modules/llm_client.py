@@ -113,7 +113,14 @@ class GroqLLMClient:
                             "4. Base your query strictly on the provided schema\n"
                             "5. Make NO assumptions about data or columns not in the schema\n"
                             "6. CRITICALLY IMPORTANT: When filtering text columns, use ONLY the 'Possible Values' shown in the schema\n"
-                            "7. If the question cannot be answered with the given schema, return: SELECT 'Unable to generate query - insufficient schema information' AS error;"
+                            "7. ⚠️ EXCLUDE ID COLUMNS: Do NOT select columns that are technical identifiers\n"
+                            "   - Exclude ANY column ending with '_id' (product_id, user_id, session_id, order_id, etc.)\n"
+                            "   - Exclude columns named: id, uid, u_id, pk, uuid\n"
+                            "   - Exception: ONLY include ID columns if the user EXPLICITLY asks for IDs or unique identifiers\n"
+                            "   - ✅ Good: SELECT product_name, brand, price, category FROM products WHERE brand = 'Nike'\n"
+                            "   - ❌ Bad: SELECT product_id, product_name, brand FROM products WHERE brand = 'Nike'\n"
+                            "   - Focus on: names, descriptions, brands, categories, prices, dates, quantities, etc.\n"
+                            "8. If the question cannot be answered with the given schema, return: SELECT 'Unable to generate query - insufficient schema information' AS error;"
                         )
                     },
                     {
@@ -252,8 +259,16 @@ Generate the corrected SQL query now:"""
                         "content": (
                             "You are a helpful assistant that explains database query results. "
                             "Provide concise, natural language answers based on the data. "
-                            "Do NOT include the SQL query in your response. "
-                            "If there are no results, say so clearly."
+                            "CRITICALLY IMPORTANT: "
+                            "- Do NOT include the SQL query in your response. "
+                            "- Do NOT mention ANY technical IDs in your answer: "
+                            "  • Exclude columns ending with '_id' (product_id, user_id, order_id, session_id, etc.) "
+                            "  • Exclude columns named: id, uid, u_id, pk, uuid "
+                            "  • Exclude values that look like IDs (FW0005, USR123, etc.) "
+                            "- Focus ONLY on user-friendly columns: names, brands, categories, prices, descriptions, dates "
+                            "- If there are no results, say so clearly. "
+                            "- Example: Instead of 'Found FW0005 (Nike Air Max)', say 'Found Nike Air Max' "
+                            "- Example: Instead of 'Products: product_id=FW0005, name=Nike Air Max', say 'Nike Air Max'"
                         )
                     },
                     {

@@ -25,6 +25,16 @@ class SchemaExtractor:
         self.db = get_db_instance()
         self.schema_name = os.getenv('DB_SCHEMA', 'public')
         self.max_unique_values = int(os.getenv('SCHEMA_MAX_UNIQUE_VALUES', '20'))  # Cardinality threshold
+        
+        # System/metadata tables to exclude from value enrichment
+        # These are internal tables not meant for user queries
+        self.excluded_tables = {
+            'chat_history',      # Internal chat storage
+            'session_data',      # Session management
+            'audit_log',         # Audit trails
+            'migrations',        # DB migrations
+            'schema_version'     # Schema versioning
+        }
     
     def extract_schema(self, table_names: List[str] = None) -> str:
         """
@@ -203,7 +213,6 @@ class SchemaExtractor:
             logger.error(f"Error extracting enriched schema: {e}")
             raise
     
-    
     def _format_enriched_schema(self, table_names: List[str]) -> str:
         """
         Format schema with enriched value information.
@@ -219,8 +228,15 @@ class SchemaExtractor:
         for table_name in table_names:
             columns = self._get_table_columns(table_name)
             
+            # Check if this is an excluded system table
+            is_excluded = table_name.lower() in self.excluded_tables
+            
             schema_parts.append(f"\nTable: {table_name}")
             schema_parts.append("=" * (len(table_name) + 7))
+            
+            if is_excluded:
+                # For excluded tables, add a note and show basic schema only
+                schema_parts.append("  [System/Internal Table - Basic schema only]")
             
             for col in columns:
                 nullable_text = "NULL" if col['nullable'] else "NOT NULL"
@@ -228,8 +244,8 @@ class SchemaExtractor:
                 
                 col_info = f"  - {col['name']} ({col['type']}) {nullable_text}{default_text}"
                 
-                # Check if it's a text column with low cardinality
-                if self._is_text_column(col['type']):
+                # Only enrich values for non-excluded tables
+                if not is_excluded and self._is_text_column(col['type']):
                     cardinality = self._check_column_cardinality(table_name, col['name'])
                     
                     if 0 < cardinality <= self.max_unique_values:

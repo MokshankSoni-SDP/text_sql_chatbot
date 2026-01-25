@@ -5,6 +5,7 @@ Integrates all modules to provide a complete chat interface.
 
 import streamlit as st
 import uuid
+import logging
 from datetime import datetime
 
 # Import custom modules
@@ -13,6 +14,10 @@ from modules.chat_history import get_chat_history_manager
 from modules.llm_client import get_llm_client
 from modules.sql_validator import validate_sql
 from modules.sql_executor import execute_sql
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 def initialize_session_state():
@@ -31,11 +36,13 @@ def initialize_session_state():
 
 
 def load_schema():
-    """Load database schema."""
+    """Load enriched database schema with actual column values."""
     try:
-        schema = get_database_schema()
+        from modules.schema_extractor import get_enriched_database_schema
+        schema = get_enriched_database_schema()  # ← Using enriched schema!
         st.session_state.schema_text = schema
         st.session_state.db_connected = True
+        logger.info("✅ Loaded ENRICHED schema with actual column values")
         return True, schema
     except Exception as e:
         st.session_state.db_connected = False
@@ -122,6 +129,51 @@ def process_user_question(user_question: str, schema: str):
             
             return error_msg
         
+        # 🔥 ZERO-RESULT SAFETY NET: Auto-retry if no results found
+        if success and len(results) == 0:
+            st.warning("⚠️ Query returned 0 results. Attempting automatic correction...")
+            
+            try:
+                # Get chat history for retry context
+                chat_history = chat_manager.format_history_for_llm(st.session_state.session_id)
+                
+                # Retry with corrective feedback
+                with st.spinner("🔄 Retrying with corrected filter values..."):
+                    corrected_sql = llm_client.retry_query_on_empty_results(
+                        failed_sql=sql_query,
+                        user_question=user_question,
+                        schema=schema,
+                        chat_history=chat_history
+                    )
+                
+                # Display corrected SQL
+                with st.expander("🔧 Corrected SQL Query (Retry)", expanded=True):
+                    st.code(corrected_sql, language="sql")
+                    st.info("Auto-corrected to use valid filter values from the database")
+                
+                # Validate corrected SQL
+                is_valid_retry, validation_error_retry = validate_sql(corrected_sql)
+                
+                if is_valid_retry:
+                    # Execute corrected SQL
+                    with st.spinner("💾 Executing corrected query..."):
+                        success_retry, results_retry, column_names_retry, exec_error_retry = execute_sql(corrected_sql)
+                    
+                    if success_retry:
+                        # Use retry results
+                        results = results_retry
+                        column_names = column_names_retry
+                        sql_query = corrected_sql  # Update to use corrected query
+                        st.success(f"✅ Retry successful! Found {len(results)} result(s)")
+                    else:
+                        st.error(f"Retry also failed: {exec_error_retry}")
+                else:
+                    st.error(f"Corrected query also invalid: {validation_error_retry}")
+                    
+            except Exception as retry_error:
+                logger.error(f"Retry failed: {retry_error}")
+                st.error(f"Auto-correction failed: {retry_error}")
+        
         # Display results in expander
         with st.expander("📊 Query Results", expanded=False):
             if results:
@@ -130,7 +182,7 @@ def process_user_question(user_question: str, schema: str):
                 st.dataframe(df, use_container_width=True)
                 st.caption(f"Rows returned: {len(results)}")
             else:
-                st.info("No results found")
+                st.info("No results found even after retry")
         
         # Generate natural language answer
         with st.spinner("✨ Generating answer..."):

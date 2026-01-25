@@ -24,6 +24,7 @@ class SchemaExtractor:
         """Initialize schema extractor."""
         self.db = get_db_instance()
         self.schema_name = os.getenv('DB_SCHEMA', 'public')
+        self.max_unique_values = int(os.getenv('SCHEMA_MAX_UNIQUE_VALUES', '20'))  # Cardinality threshold
     
     def extract_schema(self, table_names: List[str] = None) -> str:
         """
@@ -110,30 +111,146 @@ class SchemaExtractor:
             logger.error(f"Error fetching columns for table '{table_name}': {e}")
             raise
     
-    def _format_schema(self, table_names: List[str]) -> str:
+    def _get_column_values(self, table_name: str, column_name: str) -> List[str]:
         """
-        Format schema information into human-readable text.
+        Get distinct values for a text-based column.
+        
+        Args:
+            table_name: Name of the table
+            column_name: Name of the column
+            
+        Returns:
+            List[str]: List of unique values (limited by max_unique_values)
+        """
+        query = f"""
+            SELECT DISTINCT {column_name}
+            FROM {table_name}
+            WHERE {column_name} IS NOT NULL
+            ORDER BY {column_name}
+            LIMIT %s;
+        """
+        
+        try:
+            results = self.db.execute_query(query, (self.max_unique_values + 1,))  # +1 to detect overflow
+            values = [str(row[0]) for row in results]
+            return values
+        except Exception as e:
+            logger.warning(f"Could not fetch values for {table_name}.{column_name}: {e}")
+            return []
+    
+    def _check_column_cardinality(self, table_name: str, column_name: str) -> int:
+        """
+        Check the cardinality (number of unique values) for a column.
+        
+        Args:
+            table_name: Name of the table
+            column_name: Name of the column
+            
+        Returns:
+            int: Number of distinct non-null values
+        """
+        query = f"""
+            SELECT COUNT(DISTINCT {column_name})
+            FROM {table_name}
+            WHERE {column_name} IS NOT NULL;
+        """
+        
+        try:
+            result = self.db.execute_query(query)
+            count = result[0][0] if result else 0
+            return count
+        except Exception as e:
+            logger.warning(f"Could not check cardinality for {table_name}.{column_name}: {e}")
+            return -1  # Indicate error
+    
+    def _is_text_column(self, data_type: str) -> bool:
+        """
+        Check if a column is text-based.
+        
+        Args:
+            data_type: PostgreSQL data type
+            
+        Returns:
+            bool: True if text-based column
+        """
+        text_types = [
+            'character varying', 'varchar', 'character', 'char',
+            'text', 'name', 'citext'
+        ]
+        return any(text_type in data_type.lower() for text_type in text_types)
+    
+    def extract_enriched_schema(self, table_names: List[str] = None) -> str:
+        """
+        Extract schema with enriched information (actual column values).
+        This helps prevent LLM hallucinations on filter values.
+        
+        Args:
+            table_names: List of table names to extract (optional, extracts all if None)
+            
+        Returns:
+            str: Formatted enriched schema with actual values
+        """
+        try:
+            # Get all tables if not specified
+            if table_names is None:
+                table_names = self._get_all_tables()
+            
+            schema_text = self._format_enriched_schema(table_names)
+            logger.info(f"Enriched schema extracted for {len(table_names)} table(s)")
+            return schema_text
+            
+        except Exception as e:
+            logger.error(f"Error extracting enriched schema: {e}")
+            raise
+    
+    
+    def _format_enriched_schema(self, table_names: List[str]) -> str:
+        """
+        Format schema with enriched value information.
         
         Args:
             table_names: List of table names to format
             
         Returns:
-            str: Formatted schema text
+            str: Formatted enriched schema text
         """
-        schema_parts = ["DATABASE SCHEMA:\n"]
+        schema_parts = ["DATABASE SCHEMA (Enriched with actual values):\n"]
         
         for table_name in table_names:
             columns = self._get_table_columns(table_name)
             
             schema_parts.append(f"\nTable: {table_name}")
-            schema_parts.append("-" * (len(table_name) + 7))
+            schema_parts.append("=" * (len(table_name) + 7))
             
             for col in columns:
                 nullable_text = "NULL" if col['nullable'] else "NOT NULL"
                 default_text = f" DEFAULT {col['default']}" if col['default'] else ""
-                schema_parts.append(
-                    f"  - {col['name']} ({col['type']}) {nullable_text}{default_text}"
-                )
+                
+                col_info = f"  - {col['name']} ({col['type']}) {nullable_text}{default_text}"
+                
+                # Check if it's a text column with low cardinality
+                if self._is_text_column(col['type']):
+                    cardinality = self._check_column_cardinality(table_name, col['name'])
+                    
+                    if 0 < cardinality <= self.max_unique_values:
+                        # Fetch actual values
+                        values = self._get_column_values(table_name, col['name'])
+                        
+                        if len(values) <= self.max_unique_values:
+                            # Format values nicely
+                            values_str = ", ".join([f"'{v}'" for v in values[:self.max_unique_values]])
+                            col_info += f"\n    → Possible Values: [{values_str}]"
+                            logger.debug(f"Enriched {table_name}.{col['name']} with {len(values)} values")
+                        else:
+                            col_info += f"\n    → Note: {cardinality} distinct values (too many to list)"
+                    elif cardinality > self.max_unique_values:
+                        col_info += f"\n    → Note: High cardinality ({cardinality} distinct values)"
+                
+                schema_parts.append(col_info)
+        
+        schema_parts.append("\n" + "=" * 60)
+        schema_parts.append("IMPORTANT: When filtering text columns, use ONLY the 'Possible Values' listed above.")
+        schema_parts.append("Do NOT guess or assume values that are not explicitly shown.")
         
         return "\n".join(schema_parts)
     
@@ -173,3 +290,18 @@ def get_database_schema(table_names: List[str] = None) -> str:
     """
     extractor = SchemaExtractor()
     return extractor.extract_schema(table_names)
+
+
+def get_enriched_database_schema(table_names: List[str] = None) -> str:
+    """
+    Convenience function to extract enriched database schema with actual values.
+    This prevents LLM hallucinations by showing real column values.
+    
+    Args:
+        table_names: List of table names to extract (optional)
+        
+    Returns:
+        str: Formatted enriched schema text with actual values
+    """
+    extractor = SchemaExtractor()
+    return extractor.extract_enriched_schema(table_names)

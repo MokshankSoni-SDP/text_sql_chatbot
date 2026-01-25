@@ -75,6 +75,7 @@ class GroqLLMClient:
             # Fallback to original text if summarization fails
             return text
     
+    
     def text_to_sql(
         self,
         user_question: str,
@@ -111,7 +112,8 @@ class GroqLLMClient:
                             "3. NO INSERT, UPDATE, DELETE, DROP, ALTER, CREATE, or TRUNCATE\n"
                             "4. Base your query strictly on the provided schema\n"
                             "5. Make NO assumptions about data or columns not in the schema\n"
-                            "6. If the question cannot be answered with the given schema, return: SELECT 'Unable to generate query - insufficient schema information' AS error;"
+                            "6. CRITICALLY IMPORTANT: When filtering text columns, use ONLY the 'Possible Values' shown in the schema\n"
+                            "7. If the question cannot be answered with the given schema, return: SELECT 'Unable to generate query - insufficient schema information' AS error;"
                         )
                     },
                     {
@@ -134,6 +136,83 @@ class GroqLLMClient:
         except Exception as e:
             logger.error(f"Error generating SQL: {e}")
             raise
+    
+    def retry_query_on_empty_results(
+        self,
+        failed_sql: str,
+        user_question: str,
+        schema: str,
+        chat_history: str = ""
+    ) -> str:
+        """
+        Retry SQL generation with corrective feedback when initial query returns 0 results.
+        This helps fix hallucinated filter values.
+        
+        Args:
+            failed_sql: The SQL query that returned empty results
+            user_question: Original user question
+            schema: Database schema with possible values
+            chat_history: Previous conversation context
+            
+        Returns:
+            str: Corrected SQL query
+        """
+        corrective_prompt = f"""The previous query returned 0 results. This likely means you used an invalid filter value.
+
+FAILED QUERY:
+{failed_sql}
+
+ORIGINAL QUESTION:
+{user_question}
+
+{schema}
+
+{chat_history if chat_history else ''}
+
+CRITICAL INSTRUCTIONS FOR RETRY:
+1. Review the 'Possible Values' list for each text column in the schema above
+2. Check if you used a filter value that is NOT in the 'Possible Values' list
+3. Use ONLY values explicitly listed in the schema - do NOT guess or assume
+4. If the user's question mentions a value not in the schema, find the closest matching value from the 'Possible Values'
+5. Consider using ILIKE '%pattern%' for partial matching if exact values don't exist
+6. Generate a CORRECTED query that uses only valid values from the schema
+
+Generate the corrected SQL query now:"""
+
+        try:
+            logger.info("🔄 Retrying query with corrective feedback...")
+            
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are a SQL expert fixing a failed query. "
+                            "The previous query returned 0 results due to invalid filter values. "
+                            "Use ONLY the 'Possible Values' explicitly listed in the schema. "
+                            "Return ONLY the corrected SQL query, no explanations."
+                        )
+                    },
+                    {
+                        "role": "user",
+                        "content": corrective_prompt
+                    }
+                ],
+                temperature=0.1,
+                max_tokens=500
+            )
+            
+            corrected_sql = response.choices[0].message.content.strip()
+            corrected_sql = self._clean_sql_output(corrected_sql)
+            
+            logger.info(f"✅ Generated corrected query: {corrected_sql[:100]}...")
+            return corrected_sql
+            
+        except Exception as e:
+            logger.error(f"Error generating corrected SQL: {e}")
+            raise
+
     
     def result_to_english(
         self,

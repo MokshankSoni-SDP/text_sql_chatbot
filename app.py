@@ -49,6 +49,38 @@ def load_schema():
         return False, str(e)
 
 
+def split_questions(user_input: str) -> list[str]:
+    """
+    Split multiple questions from a single input.
+    Splits by '?' or newline characters.
+    
+    Args:
+        user_input: Raw user input that may contain multiple questions
+        
+    Returns:
+        list[str]: List of individual questions
+    """
+    import re
+    
+    # First, try splitting by '?'
+    questions = []
+    
+    # Split by both '?' and newlines
+    parts = re.split(r'[?\n]+', user_input)
+    
+    for part in parts:
+        # Clean up and skip empty strings
+        cleaned = part.strip()
+        if cleaned:
+            # Add back the question mark if it doesn't end with one
+            if not cleaned.endswith('?'):
+                cleaned += '?'
+            questions.append(cleaned)
+    
+    # If no questions found, return the original input
+    return questions if questions else [user_input.strip()]
+
+
 def process_user_question(user_question: str, schema: str):
     """
     Process user question through the complete pipeline.
@@ -299,20 +331,38 @@ def main():
     
     # Chat input
     if prompt := st.chat_input("Ask a question about your database..."):
-        # Display user message
-        with st.chat_message("user"):
-            st.markdown(prompt)
+        # Split into multiple questions if present
+        questions = split_questions(prompt)
         
-        # Add to session messages
-        st.session_state.messages.append({"role": "user", "content": prompt})
+        if len(questions) > 1:
+            # Multiple questions detected
+            st.info(f"🔍 Detected {len(questions)} questions. Processing each one separately...")
         
-        # Process question and get response
-        with st.chat_message("assistant"):
-            answer = process_user_question(prompt, st.session_state.schema_text)
-            st.markdown(answer)
-        
-        # Add assistant response to session messages
-        st.session_state.messages.append({"role": "assistant", "content": answer})
+        # Process each question individually
+        for idx, question in enumerate(questions, 1):
+            # Display user message
+            with st.chat_message("user"):
+                if len(questions) > 1:
+                    st.markdown(f"**Question {idx}/{len(questions)}:** {question}")
+                else:
+                    st.markdown(question)
+            
+            # Add to session messages
+            st.session_state.messages.append({"role": "user", "content": question})
+            
+            # Process question and get response
+            with st.chat_message("assistant"):
+                if len(questions) > 1:
+                    st.markdown(f"**Answer {idx}/{len(questions)}:**")
+                answer = process_user_question(question, st.session_state.schema_text)
+                st.markdown(answer)
+            
+            # Add assistant response to session messages
+            st.session_state.messages.append({"role": "assistant", "content": answer})
+            
+            # Add visual separator between Q&A pairs (except for the last one)
+            if idx < len(questions):
+                st.divider()
 
 
 if __name__ == "__main__":

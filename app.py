@@ -57,12 +57,133 @@ def initialize_session_state():
     
     if 'temp_file_path' not in st.session_state:
         st.session_state.temp_file_path = None
+    
+    # Aiven database connection status
+    if 'aiven_db_status' not in st.session_state:
+        st.session_state.aiven_db_status = 'unknown'  # 'unknown', 'connected', 'disconnected'
+    
+    if 'aiven_db_message' not in st.session_state:
+        st.session_state.aiven_db_message = ''
+    
+    if 'aiven_last_check' not in st.session_state:
+        st.session_state.aiven_last_check = None
+
+
+def check_database_connection():
+    """
+    Test connection to Aiven PostgreSQL database.
+    
+    Returns:
+        tuple: (status, message, details_dict)
+            status: 'connected' or 'disconnected'
+            message: Human-readable status message
+            details_dict: Additional connection information
+    """
+    try:
+        from modules.db_connection import get_db_instance
+        import os
+        from datetime import datetime
+        
+        # Get database instance
+        db = get_db_instance()
+        
+        # Test with simple query
+        result = db.execute_query("SELECT 1 as test, version() as pg_version;", fetch=True)
+        
+        if result:
+            # Extract PostgreSQL version
+            pg_version = result[0][1] if len(result[0]) > 1 else "Unknown"
+            
+            # Get connection details from environment
+            db_host = os.getenv('DB_HOST', 'localhost')
+            db_name = os.getenv('DB_NAME', 'defaultdb')
+            db_port = os.getenv('DB_PORT', '5432')
+            
+            # Determine if using SSL
+            is_aiven = 'aivencloud.com' in db_host
+            ssl_status = "SSL Enabled (Aiven)" if is_aiven else "Local Connection"
+            
+            details = {
+                'host': db_host,
+                'database': db_name,
+                'port': db_port,
+                'ssl_status': ssl_status,
+                'pg_version': pg_version.split(',')[0] if ',' in pg_version else pg_version[:50],
+                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            }
+            
+            message = f"Connected to {db_host}:{db_port}/{db_name}"
+            
+            return 'connected', message, details
+        else:
+            return 'disconnected', 'Query returned no results', {}
+            
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Database connection test failed: {error_msg}")
+        return 'disconnected', f"Connection failed: {error_msg}", {}
 
 
 def show_project_dashboard():
     """Display project selection/creation dashboard."""
     st.title("📂 Text-to-SQL Projects")
     st.markdown("Manage your data projects with isolated schemas")
+    
+    # ========== DATABASE CONNECTION STATUS SECTION ==========
+    st.divider()
+    
+    # Connection status header
+    col_status_title, col_status_button = st.columns([3, 1])
+    
+    with col_status_title:
+        st.subheader("🔌 Database Connection Status")
+    
+    with col_status_button:
+        if st.button("🔄 Test Connection", use_container_width=True):
+            with st.spinner("Testing connection to Aiven..."):
+                status, message, details = check_database_connection()
+                st.session_state.aiven_db_status = status
+                st.session_state.aiven_db_message = message
+                st.session_state.aiven_last_check = details.get('timestamp', '')
+                
+                # Store details for display
+                if details:
+                    st.session_state.aiven_db_details = details
+    
+    # Display connection status
+    if st.session_state.aiven_db_status == 'connected':
+        st.success(f"🟢 **Connected** - {st.session_state.aiven_db_message}")
+        
+        # Show connection details in expander
+        if hasattr(st.session_state, 'aiven_db_details'):
+            details = st.session_state.aiven_db_details
+            with st.expander("📋 Connection Details", expanded=False):
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    st.metric("Host", details.get('host', 'N/A'))
+                    st.caption(f"Port: {details.get('port', 'N/A')}")
+                
+                with col2:
+                    st.metric("Database", details.get('database', 'N/A'))
+                    st.caption(details.get('ssl_status', 'N/A'))
+                
+                with col3:
+                    st.metric("Status", "Online")
+                    st.caption(f"Last check: {details.get('timestamp', 'N/A')}")
+                
+                if 'pg_version' in details:
+                    st.info(f"**PostgreSQL Version:** {details['pg_version']}")
+    
+    elif st.session_state.aiven_db_status == 'disconnected':
+        st.error(f"🔴 **Disconnected** - {st.session_state.aiven_db_message}")
+        st.warning("⚠️ Please check your database credentials in `.env` file and ensure the Aiven service is running.")
+    
+    else:  # unknown
+        st.info("🟡 **Connection status unknown** - Click 'Test Connection' to verify database connectivity")
+    
+    st.divider()
+    # ========== END DATABASE CONNECTION STATUS ==========
     
     # User ID input
     col1, col2 = st.columns([2, 1])

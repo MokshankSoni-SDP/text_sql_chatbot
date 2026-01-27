@@ -4,6 +4,9 @@ A production-ready natural language to SQL query chatbot powered by Groq LLaMA 3
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue)](https://huggingface.co/spaces/Mokshank/DB_talk)
+
+🚀 **[Try Live Demo on Hugging Face Spaces](https://huggingface.co/spaces/Mokshank/DB_talk)**
 
 ---
 
@@ -194,6 +197,42 @@ streamlit run app.py
 ```
 
 The app will open in your browser at `http://localhost:8501`
+
+### 🌐 Deploy to Hugging Face Spaces
+
+Want to deploy your own instance? It's easy!
+
+1. **Create a Hugging Face Space**
+   - Go to [Hugging Face Spaces](https://huggingface.co/spaces)
+   - Click "Create new Space"
+   - Choose **Streamlit SDK**
+
+2. **Configure Secrets** (in Space Settings > Variables and Secrets)
+   ```
+   DB_HOST=your_postgres_host
+   DB_PORT=5432
+   DB_USER=your_username
+   DB_PASSWORD=your_password
+   DB_NAME=your_database
+   GROQ_API_KEY=your_groq_api_key
+   GROQ_MODEL=llama-3.3-70b-versatile
+   ```
+
+3. **Set Variables** (optional)
+   ```
+   CHAT_HISTORY_LIMIT=10
+   SCHEMA_MAX_UNIQUE_VALUES=25
+   ```
+
+4. **Push to Hugging Face**
+   ```bash
+   git remote add huggingface https://huggingface.co/spaces/YOUR_USERNAME/YOUR_SPACE_NAME
+   git push huggingface main
+   ```
+
+5. **Your app is live!** 🎉
+
+> **Note**: The `README_HF.md` file will be automatically used as the Space description.
 
 ---
 

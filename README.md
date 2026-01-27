@@ -1,3 +1,15 @@
+---
+title: DB Talk - Text-to-SQL Chatbot
+emoji: 💬
+colorFrom: blue
+colorTo: purple
+sdk: streamlit
+sdk_version: "1.30.0"
+app_file: app.py
+pinned: false
+license: mit
+---
+
 # Text-to-SQL Chatbot with Multi-Tenant Architecture
 
 A production-ready natural language to SQL query chatbot powered by Groq LLaMA 3.3 and PostgreSQL. Features multi-tenant data isolation, automated hallucination prevention, and zero-result retry logic.

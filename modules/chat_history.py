@@ -21,10 +21,46 @@ class ChatHistoryManager:
     Manages chat history storage and retrieval.
     """
     
-    def __init__(self):
-        """Initialize chat history manager."""
+    def __init__(self, schema_name: str = 'public'):
+        """Initialize chat history manager.
+        
+        Args:
+            schema_name: Schema to use for chat history (default: 'public')
+        """
         self.db = get_db_instance()
+        self.schema_name = schema_name
         self.history_limit = int(os.getenv('CHAT_HISTORY_LIMIT', '5'))
+        
+        # Ensure chat_history table exists in this schema
+        self.ensure_chat_history_table()
+    
+    def ensure_chat_history_table(self):
+        """
+        Create chat_history table in the schema if it doesn't exist.
+        """
+        try:
+            query = f"""
+                CREATE TABLE IF NOT EXISTS {self.schema_name}.chat_history (
+                    id SERIAL PRIMARY KEY,
+                    session_id VARCHAR(255) NOT NULL,
+                    role VARCHAR(50) NOT NULL CHECK (role IN ('user', 'assistant')),
+                    content TEXT NOT NULL,
+                    timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+            """
+            self.db.execute_query(query, fetch=False)
+            
+            # Create indexes if they don't exist
+            index_query = f"""
+                CREATE INDEX IF NOT EXISTS idx_chat_history_session 
+                ON {self.schema_name}.chat_history(session_id);
+            """
+            self.db.execute_query(index_query, fetch=False)
+            
+            logger.debug(f"Ensured chat_history table exists in schema: {self.schema_name}")
+            
+        except Exception as e:
+            logger.warning(f"Could not create chat_history table in {self.schema_name}: {e}")
     
     def insert_message(self, session_id: str, role: str, content: str, llm_client=None) -> bool:
         """
@@ -51,8 +87,8 @@ class ChatHistoryManager:
                 logger.warning(f"⚠️ Summarization failed, storing original content: {e}")
                 content_to_store = content  # Fallback to original
         
-        query = """
-            INSERT INTO chat_history (session_id, role, content, timestamp)
+        query = f"""
+            INSERT INTO {self.schema_name}.chat_history (session_id, role, content, timestamp)
             VALUES (%s, %s, %s, %s);
         """
         
@@ -93,9 +129,9 @@ class ChatHistoryManager:
         if limit is None:
             limit = self.history_limit
         
-        query = """
+        query = f"""
             SELECT role, content, timestamp
-            FROM chat_history
+            FROM {self.schema_name}.chat_history
             WHERE session_id = %s
             ORDER BY timestamp DESC
             LIMIT %s;
@@ -130,7 +166,7 @@ class ChatHistoryManager:
         Returns:
             bool: True if successful, False otherwise
         """
-        query = "DELETE FROM chat_history WHERE session_id = %s;"
+        query = f"DELETE FROM {self.schema_name}.chat_history WHERE session_id = %s;"
         
         try:
             self.db.execute_query(query, (session_id,), fetch=False)
@@ -171,11 +207,14 @@ class ChatHistoryManager:
         return "\n".join(formatted_parts)
 
 
-def get_chat_history_manager() -> ChatHistoryManager:
+def get_chat_history_manager(schema_name: str = 'public') -> ChatHistoryManager:
     """
     Get chat history manager instance.
+    
+    Args:
+        schema_name: Schema to use for chat history (default: 'public')
     
     Returns:
         ChatHistoryManager: Chat history manager instance
     """
-    return ChatHistoryManager()
+    return ChatHistoryManager(schema_name=schema_name)

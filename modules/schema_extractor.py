@@ -20,10 +20,15 @@ class SchemaExtractor:
     Extracts and formats database schema information.
     """
     
-    def __init__(self):
-        """Initialize schema extractor."""
+    def __init__(self, schema_name: str = None):
+        """Initialize schema extractor.
+        
+        Args:
+            schema_name: Schema to extract from (default: from env or 'public')
+        """
         self.db = get_db_instance()
-        self.schema_name = os.getenv('DB_SCHEMA', 'public')
+        # Accept schema as parameter, fallback to env var, then 'public'
+        self.schema_name = schema_name or os.getenv('DB_SCHEMA', 'public')
         self.max_unique_values = int(os.getenv('SCHEMA_MAX_UNIQUE_VALUES', '20'))  # Cardinality threshold
         
         # System/metadata tables to exclude from value enrichment
@@ -294,30 +299,32 @@ class SchemaExtractor:
         }
 
 
-def get_database_schema(table_names: List[str] = None) -> str:
+def get_database_schema(schema_name: str = None, table_names: List[str] = None) -> str:
     """
     Convenience function to extract database schema.
     
     Args:
+        schema_name: Schema to extract from (default: from env or 'public')
         table_names: List of table names to extract (optional)
         
     Returns:
         str: Formatted schema text
     """
-    extractor = SchemaExtractor()
+    extractor = SchemaExtractor(schema_name=schema_name)
     return extractor.extract_schema(table_names)
 
 
-def get_enriched_database_schema(table_names: List[str] = None) -> str:
+def get_enriched_database_schema(schema_name: str = None, table_names: List[str] = None) -> str:
     """
     Convenience function to extract enriched database schema with actual values.
     This prevents LLM hallucinations by showing real column values.
     
     Args:
+        schema_name: Schema to extract from (default: from env or 'public')
         table_names: List of table names to extract (optional)
         
     Returns:
         str: Formatted enriched schema text with actual values
     """
-    extractor = SchemaExtractor()
+    extractor = SchemaExtractor(schema_name=schema_name)
     return extractor.extract_enriched_schema(table_names)

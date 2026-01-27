@@ -23,12 +23,13 @@ class SQLExecutor:
         """Initialize SQL executor."""
         self.db = get_db_instance()
     
-    def execute(self, sql_query: str) -> Tuple[bool, Optional[List[tuple]], Optional[List[str]], str]:
+    def execute(self, sql_query: str, schema_name: str = 'public') -> Tuple[bool, Optional[List[tuple]], Optional[List[str]], str]:
         """
         Execute a SQL query and return results.
         
         Args:
             sql_query: Validated SQL query to execute
+            schema_name: Schema to execute query in (default: 'public')
             
         Returns:
             Tuple containing:
@@ -42,7 +43,11 @@ class SQLExecutor:
             conn = self.db.get_connection()
             cursor = conn.cursor()
             
-            logger.info(f"Executing query: {sql_query[:100]}...")
+            # Set search path for schema context
+            search_path_query = f"SET search_path TO {schema_name}, public;"
+            cursor.execute(search_path_query)
+            
+            logger.info(f"Executing query in schema '{schema_name}': {sql_query[:100]}...")
             cursor.execute(sql_query)
             
             # Fetch results
@@ -65,12 +70,13 @@ class SQLExecutor:
             logger.error(f"Unexpected error during query execution: {e}")
             return False, None, None, f"Execution error: {str(e)}"
     
-    def execute_to_dataframe(self, sql_query: str) -> Tuple[bool, Optional[pd.DataFrame], str]:
+    def execute_to_dataframe(self, sql_query: str, schema_name: str = 'public') -> Tuple[bool, Optional[pd.DataFrame], str]:
         """
         Execute a SQL query and return results as a pandas DataFrame.
         
         Args:
             sql_query: Validated SQL query to execute
+            schema_name: Schema to execute query in (default: 'public')
             
         Returns:
             Tuple containing:
@@ -78,7 +84,7 @@ class SQLExecutor:
                 - dataframe (pd.DataFrame): Results as DataFrame, None if error
                 - error_message (str): Error message if failed, empty if successful
         """
-        success, results, column_names, error_msg = self.execute(sql_query)
+        success, results, column_names, error_msg = self.execute(sql_query, schema_name=schema_name)
         
         if not success:
             return False, None, error_msg
@@ -117,15 +123,16 @@ class SQLExecutor:
         return summary
 
 
-def execute_sql(sql_query: str) -> Tuple[bool, Optional[List[tuple]], Optional[List[str]], str]:
+def execute_sql(sql_query: str, schema_name: str = 'public') -> Tuple[bool, Optional[List[tuple]], Optional[List[str]], str]:
     """
     Convenience function to execute SQL query.
     
     Args:
         sql_query: SQL query to execute
+        schema_name: Schema to execute query in (default: 'public')
         
     Returns:
         Tuple[bool, List[tuple], List[str], str]: (success, results, column_names, error_message)
     """
     executor = SQLExecutor()
-    return executor.execute(sql_query)
+    return executor.execute(sql_query, schema_name=schema_name)

@@ -30,10 +30,6 @@ ENV/
 .env
 .env.local
 
-# SSL Certificates
-ca.pem
-*.pem
-
 # IDE
 .vscode/
 .idea/

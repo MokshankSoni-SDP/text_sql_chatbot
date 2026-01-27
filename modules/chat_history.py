@@ -196,7 +196,7 @@ class ChatHistoryManager:
             content = msg['content']
             
             # Summarize long assistant responses for LLM context
-            if role == 'ASSISTANT' and len(content) > 500 and llm_client is not None:
+            if role == 'ASSISTANT' and len(content) > 250 and llm_client is not None:
                 try:
                     logger.info(f"📝 Summarizing assistant message ({len(content)} chars) for LLM context...")
                     summarized = llm_client.summarize_text(content)

@@ -92,25 +92,31 @@ class GroqLLMClient:
 
 Current user message: "{user_query}"
 
-Classify this message into one of two categories:
-- NEEDS_DATABASE: User wants to query, analyze, or retrieve data from their database
-- GENERAL_CHAT: Greetings, thanks, clarifications, explanations, or general questions
+Task: Classify this message into one of two categories.
+
+CRITICAL RULES:
+1. If the message asks to SHOW, FIND, LIST, COUNT, GET, DISPLAY, or RETRIEVE any data → NEEDS_DATABASE
+2. If the message mentions PRODUCTS, SALES, USERS, ORDERS, PRICES, or any data entities → NEEDS_DATABASE
+3. If the message contains words like "best", "top", "all", "average", "total" about data → NEEDS_DATABASE
+4. ONLY classify as GENERAL_CHAT if it's clearly: greetings, thanks, or meta-questions about SQL/concepts
 
 Examples of NEEDS_DATABASE:
 - "Show me all products"
-- "Count total sales"
-- "What's the average price?"
-- "List users who bought Nike"
-- "How many orders yesterday?"
+- "Show me your best shoes" ← NEEDS_DATABASE (wants shoe data)
+- "What are the top sales?"
+- "Display Nike products"
+- "Count total orders"
+- "List the cheapest items"
+- "Find red shoes"
+- "Get all users"
 
-Examples of GENERAL_CHAT:
+Examples of GENERAL_CHAT (VERY LIMITED):
 - "Hello" / "Hi" / "Hey"
 - "Thank you" / "Thanks"
-- "What is SQL?"
-- "Explain the previous result"
-- "Can you clarify that?"
-- "How does this work?"
-- "What do you mean by that?"
+- "What is SQL?" (asking about SQL concept, not data)
+- "How does this chatbot work?"
+
+When in doubt, return NEEDS_DATABASE.
 
 Return ONLY one word: either "NEEDS_DATABASE" or "GENERAL_CHAT"."""
 
@@ -120,8 +126,11 @@ Return ONLY one word: either "NEEDS_DATABASE" or "GENERAL_CHAT"."""
                     {
                         "role": "system",
                         "content": (
-                            "You are an intent classifier. Analyze the user's message and determine if they need "
-                            "database access or just want to have a conversation. Return ONLY 'NEEDS_DATABASE' or 'GENERAL_CHAT'."
+                            "You are an intent classifier for a data query chatbot. "
+                            "Your primary purpose is to help users query their database. "
+                            "BIAS TOWARD 'NEEDS_DATABASE' - only use 'GENERAL_CHAT' for clear non-data questions like greetings or thanks. "
+                            "If the user mentions ANY data-related words (show, find, products, sales, best, etc.), return 'NEEDS_DATABASE'. "
+                            "Return ONLY 'NEEDS_DATABASE' or 'GENERAL_CHAT'."
                         )
                     },
                     {
@@ -129,7 +138,7 @@ Return ONLY one word: either "NEEDS_DATABASE" or "GENERAL_CHAT"."""
                         "content": prompt
                     }
                 ],
-                temperature=0.1,
+                temperature=0.0,  # More deterministic
                 max_tokens=10
             )
             

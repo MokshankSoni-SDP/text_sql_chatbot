@@ -709,11 +709,24 @@ def process_user_question(user_question: str, schema: str, schema_name: str):
 def show_chat_interface():
     """Display chat interface for active project."""
     
-    # Sidebar
+    # ═══ ENHANCED SIDEBAR ═══
     with st.sidebar:
-        # Project info
-        st.success(f"📂 **{st.session_state.current_project_name}**")
-        st.caption(f"Schema: `{st.session_state.active_schema}`")
+        # Project info with modern styling
+        st.markdown(f"""
+            <div style='
+                background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+                padding: 1rem;
+                border-radius: 0.75rem;
+                margin-bottom: 1rem;
+            '>
+                <h3 style='margin: 0; color: white; font-size: 1.1rem;'>
+                    📁 {st.session_state.current_project_name}
+                </h3>
+                <p style='margin: 0.5rem 0 0 0; color: rgba(255, 255, 255, 0.9); font-size: 0.85rem;'>
+                    Schema: <code style='background: rgba(0,0,0,0.2); padding: 0.2rem 0.4rem; border-radius: 0.25rem;'>{st.session_state.active_schema}</code>
+                </p>
+            </div>
+        """, unsafe_allow_html=True)
         
         if st.button("← Back to Projects", use_container_width=True):
             st.session_state.active_schema = None
@@ -726,7 +739,7 @@ def show_chat_interface():
         st.divider()
         
         # Project Analytics
-        st.subheader("📊 Project Analytics")
+        st.markdown("#### 📊 Analytics")
         
         try:
             project_manager = get_project_manager()
@@ -743,7 +756,7 @@ def show_chat_interface():
             messages = chat_manager.get_recent_messages(st.session_state.session_id, limit=1000)
             user_messages = [m for m in messages if m['role'] == 'user']
             
-            st.metric("Queries This Session", len(user_messages))
+            st.metric("Queries", len(user_messages))
             
         except Exception as e:
             st.warning(f"Could not load analytics: {e}")
@@ -751,7 +764,7 @@ def show_chat_interface():
         st.divider()
         
         # Database connection
-        st.subheader("⚙️ Configuration")
+        st.markdown("#### ⚙️ Configuration")
         
         if st.button("🔌 Load Schema", use_container_width=True):
             with st.spinner("Loading database schema..."):
@@ -769,14 +782,14 @@ def show_chat_interface():
         st.divider()
         
         # Schema editor
-        st.subheader("📋 Database Schema")
+        st.markdown("#### 📋 Schema")
         
         if st.session_state.schema_text:
             edited_schema = st.text_area(
                 "Edit schema if needed:",
                 value=st.session_state.schema_text,
-                height=300,
-                help="You can manually edit the schema to provide additional context"
+                height=250,
+                help="Manually edit the schema for additional context"
             )
             
             if st.button("💾 Update Schema", use_container_width=True):
@@ -788,22 +801,37 @@ def show_chat_interface():
         st.divider()
         
         # Session controls
-        st.subheader("🗂️ Session")
+        st.markdown("#### 🗂️ Session")
         st.caption(f"ID: {st.session_state.session_id[:8]}...")
         
-        if st.button("🗑️ Clear Chat History", use_container_width=True):
+        if st.button("🗑️ Clear Chat", use_container_width=True):
             try:
                 chat_manager = get_chat_history_manager(schema_name=st.session_state.active_schema)
                 chat_manager.clear_session_history(st.session_state.session_id)
                 st.session_state.messages = []
-                st.success("Chat history cleared!")
+                st.success("Chat cleared!")
                 st.rerun()
             except Exception as e:
                 st.error(f"Error: {e}")
     
-    # Main content
-    st.title("💬 Text-to-SQL Chatbot")
-    st.markdown(f"Ask questions about your **{st.session_state.current_project_name}** data!")
+    # ═══ MAIN CHAT INTERFACE ═══
+    # Modern header
+    st.markdown("""
+        <div style='margin-bottom: 1.5rem;'>
+            <h1 style='
+                font-size: 2.5rem;
+                margin-bottom: 0.5rem;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+            '>
+                💬 Chat with Your Data
+            </h1>
+            <p style='color: #94a3b8; font-size: 1.1rem;'>
+                Ask questions about <strong>{st.session_state.current_project_name}</strong> in plain English
+            </p>
+        </div>
+    """, unsafe_allow_html=True)
     
     # Check connection status
     if not st.session_state.db_connected:

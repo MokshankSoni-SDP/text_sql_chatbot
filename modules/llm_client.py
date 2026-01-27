@@ -75,6 +75,142 @@ class GroqLLMClient:
             # Fallback to original text if summarization fails
             return text
     
+    def classify_intent(self, user_query: str, chat_history: str = "") -> str:
+        """
+        Classify user intent to determine if query needs database access.
+        
+        Args:
+            user_query: User's input message
+            chat_history: Previous conversation context
+            
+        Returns:
+            str: Either "NEEDS_DATABASE" or "GENERAL_CHAT"
+        """
+        try:
+            prompt = f"""Previous conversation:
+{chat_history if chat_history else "No previous conversation"}
+
+Current user message: "{user_query}"
+
+Classify this message into one of two categories:
+- NEEDS_DATABASE: User wants to query, analyze, or retrieve data from their database
+- GENERAL_CHAT: Greetings, thanks, clarifications, explanations, or general questions
+
+Examples of NEEDS_DATABASE:
+- "Show me all products"
+- "Count total sales"
+- "What's the average price?"
+- "List users who bought Nike"
+- "How many orders yesterday?"
+
+Examples of GENERAL_CHAT:
+- "Hello" / "Hi" / "Hey"
+- "Thank you" / "Thanks"
+- "What is SQL?"
+- "Explain the previous result"
+- "Can you clarify that?"
+- "How does this work?"
+- "What do you mean by that?"
+
+Return ONLY one word: either "NEEDS_DATABASE" or "GENERAL_CHAT"."""
+
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are an intent classifier. Analyze the user's message and determine if they need "
+                            "database access or just want to have a conversation. Return ONLY 'NEEDS_DATABASE' or 'GENERAL_CHAT'."
+                        )
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                temperature=0.1,
+                max_tokens=10
+            )
+            
+            intent = response.choices[0].message.content.strip().upper()
+            
+            # Validate response
+            if "NEEDS_DATABASE" in intent:
+                logger.info(f"Intent classified as NEEDS_DATABASE for query: {user_query[:50]}")
+                return "NEEDS_DATABASE"
+            elif "GENERAL_CHAT" in intent:
+                logger.info(f"Intent classified as GENERAL_CHAT for query: {user_query[:50]}")
+                return "GENERAL_CHAT"
+            else:
+                # Default to NEEDS_DATABASE if unclear
+                logger.warning(f"Unclear intent classification: {intent}. Defaulting to NEEDS_DATABASE")
+                return "NEEDS_DATABASE"
+                
+        except Exception as e:
+            logger.error(f"Error classifying intent: {e}")
+            # Default to NEEDS_DATABASE to maintain backwards compatibility
+            return "NEEDS_DATABASE"
+    
+    def general_chat(self, user_query: str, chat_history: str = "") -> str:
+        """
+        Handle general conversation without database queries.
+        
+        Args:
+            user_query: User's question or message
+            chat_history: Previous conversation context
+            
+        Returns:
+            str: Conversational response
+        """
+        try:
+            messages = [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a helpful Data Assistant chatbot. Your main purpose is to help users query and "
+                        "analyze their data using natural language.\n\n"
+                        "Guidelines:\n"
+                        "- Be friendly, polite, and concise\n"
+                        "- If the user greets you, greet them back warmly\n"
+                        "- If they ask for clarification about previous results, explain clearly\n"
+                        "- If they ask about SQL or data concepts, provide brief, helpful explanations\n"
+                        "- If they thank you, acknowledge politely\n"
+                        "- Keep responses brief (2-3 sentences max)\n"
+                        "- Always remind them you can help with data queries if relevant\n"
+                        "- You have access to their uploaded data and can answer questions about it"
+                    )
+                }
+            ]
+            
+            # Add chat history if available
+            if chat_history:
+                messages.append({
+                    "role": "system",
+                    "content": f"Previous conversation context:\n{chat_history}"
+                })
+            
+            # Add user query
+            messages.append({
+                "role": "user",
+                "content": user_query
+            })
+            
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                temperature=0.7,
+                max_tokens=200
+            )
+            
+            answer = response.choices[0].message.content.strip()
+            logger.info("Generated general chat response")
+            return answer
+            
+        except Exception as e:
+            logger.error(f"Error in general chat: {e}")
+            return "I'm here to help you query and analyze your data. Feel free to ask me any questions about your uploaded data!"
+    
     
     def text_to_sql(
         self,

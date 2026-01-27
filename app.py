@@ -424,7 +424,8 @@ def split_questions(user_input: str) -> list[str]:
 
 def process_user_question(user_question: str, schema: str, schema_name: str):
     """
-    Process user question through the complete pipeline.
+    Process user question through the complete pipeline WITH INTENT ROUTING.
+    Routes to either SQL pipeline or general chat based on intent classification.
     
     Args:
         user_question: User's natural language question
@@ -441,6 +442,36 @@ def process_user_question(user_question: str, schema: str, schema_name: str):
         
         # Get chat history for context
         chat_history = chat_manager.format_history_for_llm(st.session_state.session_id)
+        
+        # ═══════════════════════════════════════════════════════════
+        # STEP 1: INTENT CLASSIFICATION (The Router)
+        # ═══════════════════════════════════════════════════════════
+        with st.spinner("🔍 Understanding your request..."):
+            intent = llm_client.classify_intent(user_question, chat_history)
+        
+        # Display intent badge
+        if intent == "GENERAL_CHAT":
+            st.info("💬 General Conversation Mode")
+        else:
+            st.info("🗄️ Database Query Mode")
+        
+        # ═══════════════════════════════════════════════════════════
+        # STEP 2: CONDITIONAL EXECUTION
+        # ═══════════════════════════════════════════════════════════
+        
+        # Route A: GENERAL CHAT (no database needed)
+        if intent == "GENERAL_CHAT":
+            with st.spinner("💭 Thinking..."):
+                answer = llm_client.general_chat(user_question, chat_history)
+            
+            # Store in chat history
+            chat_manager.insert_message(st.session_state.session_id, "user", user_question, llm_client=llm_client)
+            chat_manager.insert_message(st.session_state.session_id, "assistant", answer, llm_client=llm_client)
+            
+            return answer
+        
+        # Route B: SQL PIPELINE (needs database)
+        # Continue with existing SQL processing logic...
         
         # Generate SQL query
         with st.spinner("🤖 Generating SQL query..."):

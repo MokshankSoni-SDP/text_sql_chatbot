@@ -136,88 +136,87 @@ def check_database_connection():
 
 def show_project_dashboard():
     """Display project selection/creation dashboard."""
-    # Hero section with gradient text
+    # ═══ HERO SECTION ═══
     st.markdown("""
-        <h1 style='text-align: center; font-size: 3rem; margin-bottom: 0.5rem;'>
-            🤖 Text-to-SQL Assistant
-        </h1>
-        <p style='text-align: center; font-size: 1.2rem; color: #94a3b8; margin-bottom: 2rem;'>
-            Transform natural language into powerful SQL queries ✨
-        </p>
+        <div style='text-align: center; padding: 2.5rem 0 2rem 0;'>
+            <h1 style='
+                font-size: 3.5rem; 
+                font-weight: 700; 
+                margin-bottom: 0.8rem;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+                background-clip: text;
+                animation: fadeIn 0.6s ease-out;
+            '>
+                🤖 Text-to-SQL Assistant
+            </h1>
+            <p style='
+                font-size: 1.25rem; 
+                color: #94a3b8; 
+                margin-bottom: 0.5rem;
+                animation: fadeIn 0.8s ease-out;
+            '>
+                Transform questions into insights • No SQL required • Instant answers ✨
+            </p>
+            <p style='
+                font-size: 0.95rem; 
+                color: #64748b;
+                animation: fadeIn 1s ease-out;
+            '>
+                Ask anything about your data in plain English
+            </p>
+        </div>
+        
+        <style>
+            @keyframes fadeIn {
+                from { opacity: 0; transform: translateY(15px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
+        </style>
     """, unsafe_allow_html=True)
     
-    # ========== DATABASE CONNECTION STATUS SECTION ==========
-    st.divider()
+    # ═══ DATABASE STATUS (Compact) ═══
+    col_status, col_test = st.columns([4, 1])
     
-    # Connection status header
-    col_status_title, col_status_button = st.columns([3, 1])
+    with col_status:
+        if st.session_state.aiven_db_status == 'connected':
+            st.success("🟢 **Database Connected** • Ready to query", icon="✅")
+        elif st.session_state.aiven_db_status == 'disconnected':
+            st.error("🔴 **Database Disconnected** • Check configuration", icon="⚠️")
+        else:
+            st.info("🟡 **Status Unknown** • Test connection", icon="ℹ️")
     
-    with col_status_title:
-        st.subheader("🔌 Database Connection Status")
-    
-    with col_status_button:
-        if st.button("🔄 Test Connection", use_container_width=True):
-            with st.spinner("Testing connection to Aiven..."):
+    with col_test:
+        if st.button("🔄 Test", use_container_width=True, help="Test database connection"):
+            with st.spinner("Testing..."):
                 status, message, details = check_database_connection()
                 st.session_state.aiven_db_status = status
                 st.session_state.aiven_db_message = message
                 st.session_state.aiven_last_check = details.get('timestamp', '')
-                
-                # Store details for display
                 if details:
                     st.session_state.aiven_db_details = details
-    
-    # Display connection status
-    if st.session_state.aiven_db_status == 'connected':
-        st.success(f"🟢 **Connected** - {st.session_state.aiven_db_message}")
-        
-        # Show connection details in expander
-        if hasattr(st.session_state, 'aiven_db_details'):
-            details = st.session_state.aiven_db_details
-            with st.expander("📋 Connection Details", expanded=False):
-                col1, col2, col3 = st.columns(3)
-                
-                with col1:
-                    st.metric("Host", details.get('host', 'N/A'))
-                    st.caption(f"Port: {details.get('port', 'N/A')}")
-                
-                with col2:
-                    st.metric("Database", details.get('database', 'N/A'))
-                    st.caption(details.get('ssl_status', 'N/A'))
-                
-                with col3:
-                    st.metric("Status", "Online")
-                    st.caption(f"Last check: {details.get('timestamp', 'N/A')}")
-                
-                if 'pg_version' in details:
-                    st.info(f"**PostgreSQL Version:** {details['pg_version']}")
-    
-    elif st.session_state.aiven_db_status == 'disconnected':
-        st.error(f"🔴 **Disconnected** - {st.session_state.aiven_db_message}")
-        st.warning("⚠️ Please check your database credentials in `.env` file and ensure the Aiven service is running.")
-    
-    else:  # unknown
-        st.info("🟡 **Connection status unknown** - Click 'Test Connection' to verify database connectivity")
+                st.rerun()
     
     st.divider()
-    # ========== END DATABASE CONNECTION STATUS ==========
     
-    # User ID input
-    col1, col2 = st.columns([2, 1])
+    # ═══ USER AUTHENTICATION ═══
+    col1, col2 = st.columns([3, 1])
+    
     with col1:
         user_id = st.text_input(
             "👤 User ID",
-            placeholder="Enter your user ID (e.g., john_doe)",
+            placeholder="Enter your username (e.g., john_doe)",
             help="Your unique identifier for project isolation"
         )
     
     with col2:
         st.markdown("<br>", unsafe_allow_html=True)
-        use_public = st.checkbox("Use legacy public schema", help="Access the original public schema")
+        use_public = st.checkbox("🔓 Public", help="Use public schema")
     
     if use_public:
-        st.info("🔓 Using legacy public schema (no user isolation)")
-        if st.button("Connect to Public Schema", type="primary"):
+        st.info("📖 Using public schema • Shared workspace")
+        if st.button("🚀 Connect to Public", type="primary", use_container_width=True):
             st.session_state.user_id = "public"
             st.session_state.active_schema = "public"
             st.session_state.current_project_name = "Public Schema"
@@ -225,51 +224,103 @@ def show_project_dashboard():
         return
     
     if not user_id:
-        st.info("👆 Enter your User ID to view or create projects")
+        st.markdown("""
+            <div style='
+                text-align: center; 
+                padding: 2.5rem 2rem; 
+                background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%);
+                border-radius: 1rem;
+                margin: 2rem 0;
+            '>
+                <h3 style='color: #818cf8; margin-bottom: 1rem;'>👋 Welcome! Let's Get Started</h3>
+                <p style='color: #94a3b8; font-size: 1.05rem;'>
+                    Enter your User ID above to create or access your projects
+                </p>
+            </div>
+        """, unsafe_allow_html=True)
         return
     
     # Fetch existing projects
     project_manager = get_project_manager()
     projects = project_manager.list_user_projects(user_id)
     
+    # Welcome message
+    st.markdown(f"### 👋 Welcome back, **{user_id}**!")
+    st.markdown("")
+    
     # Two-column layout
-    col_left, col_right = st.columns(2)
+    col_left, col_right = st.columns([3, 2])
     
     # LEFT: Load Existing Project
     with col_left:
-        st.subheader("📂 Load Existing Project")
+        st.markdown("#### 📂 Your Projects")
         
         if projects:
-            # Display projects as cards
+            # Display projects as modern styled cards
             for idx, project in enumerate(projects):
+                # Modern card with gradient border
                 with st.container():
-                    st.markdown(f"### {project['display_name']}")
-                    
-                    # Project metadata
-                    col_meta1, col_meta2, col_meta3 = st.columns(3)
-                    with col_meta1:
-                        st.metric("Tables", project['table_count'])
-                    with col_meta2:
-                        st.metric("Rows", f"{project['total_rows']:,}")
-                    with col_meta3:
-                        st.caption(f"Created: {project['created_at']}")
+                    st.markdown(f"""
+                        <div style='
+                            background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+                            border: 2px solid #475569;
+                            border-radius: 1rem;
+                            padding: 1.5rem;
+                            margin-bottom: 1.25rem;
+                            transition: all 0.3s ease;
+                        '>
+                            <div style='display: flex; align-items: center; margin-bottom: 0.75rem;'>
+                                <span style='font-size: 2rem; margin-right: 0.75rem;'>📁</span>
+                                <h3 style='margin: 0; color: #f1f5f9; font-size: 1.3rem;'>{project['display_name']}</h3>
+                            </div>
+                            <div style='display: flex; gap: 1.5rem; margin-bottom: 1rem; flex-wrap: wrap;'>
+                                <span style='color: #94a3b8; font-size: 0.9rem;'>
+                                    <strong style='color: #cbd5e1;'>{project['table_count']}</strong> tables
+                                </span>
+                                <span style='color: #94a3b8; font-size: 0.9rem;'>
+                                    <strong style='color: #cbd5e1;'>{project['total_rows']:,}</strong> rows
+                                </span>
+                                <span style='color: #64748b; font-size: 0.85rem;'>
+                                    Created {project['created_at']}
+                                </span>
+                            </div>
+                        </div>
+                    """, unsafe_allow_html=True)
                     
                     # Action buttons
-                    col_btn1, col_btn2 = st.columns(2)
+                    col_btn1, col_btn2, col_btn3 = st.columns([2, 1, 1])
+                    
                     with col_btn1:
-                        if st.button(f"📖 Load", key=f"load_{idx}", use_container_width=True):
+                        if st.button(
+                            "🚀 Open Project",
+                            key=f"load_{idx}",
+                            type="primary",
+                            use_container_width=True
+                        ):
                             st.session_state.user_id = user_id
                             st.session_state.active_schema = project['schema_name']
                             st.session_state.current_project_name = project['display_name']
                             st.rerun()
                     
                     with col_btn2:
-                        if st.button(f"🗑️ Delete", key=f"delete_{idx}", use_container_width=True):
+                        if st.button("📋 Details", key=f"details_{idx}", use_container_width=True):
+                            st.session_state[f'show_details_{idx}'] = not st.session_state.get(f'show_details_{idx}', False)
+                    
+                    with col_btn3:
+                        if st.button("🗑️", key=f"delete_{idx}", help="Delete project", use_container_width=True):
                             st.session_state[f'confirm_delete_{idx}'] = True
+                    
+                    # Show details if toggled
+                    if st.session_state.get(f'show_details_{idx}', False):
+                        st.markdown(f"""
+                        <div style='background: rgba(99, 102, 241, 0.1); padding: 1rem; border-radius: 0.5rem; margin-top: 0.5rem;'>
+                            <p style='color: #cbd5e1; margin: 0;'><strong>Schema:</strong> <code style='background: #0f172a; padding: 0.2rem 0.5rem; border-radius: 0.25rem;'>{project['schema_name']}</code></p>
+                        </div>
+                        """, unsafe_allow_html=True)
                     
                     # Confirmation dialog for deletion
                     if st.session_state.get(f'confirm_delete_{idx}', False):
-                        st.warning(f"⚠️ Delete **{project['display_name']}**? This will permanently delete all data!")
+                        st.warning(f"⚠️ **Permanently delete** {project['display_name']}? All data will be lost!")
                         col_confirm1, col_confirm2 = st.columns(2)
                         with col_confirm1:
                             if st.button("✅ Confirm Delete", key=f"confirm_yes_{idx}", type="primary"):
@@ -279,19 +330,41 @@ def show_project_dashboard():
                                     st.session_state[f'confirm_delete_{idx}'] = False
                                     st.rerun()
                                 except Exception as e:
-                                    st.error(f"Error deleting project: {e}")
+                                    st.error(f"Error: {e}")
                         with col_confirm2:
                             if st.button("❌ Cancel", key=f"confirm_no_{idx}"):
                                 st.session_state[f'confirm_delete_{idx}'] = False
                                 st.rerun()
-                    
-                    st.divider()
         else:
-            st.info("No projects found. Create a new one! →")
+            # Empty state with visual design
+            st.markdown("""
+                <div style='
+                    text-align: center;
+                    padding: 3rem 2rem;
+                    background: rgba(100, 116, 139, 0.1);
+                    border: 2px dashed #475569;
+                    border-radius: 1rem;
+                '>
+                    <div style='font-size: 3.5rem; margin-bottom: 1rem;'>📂</div>
+                    <h4 style='color: #94a3b8; margin-bottom: 0.5rem;'>No Projects Yet</h4>
+                    <p style='color: #64748b;'>Create your first project to get started →</p>
+                </div>
+            """, unsafe_allow_html=True)
     
     # RIGHT: Create New Project
     with col_right:
-        st.subheader("🆕 Create New Project")
+        st.markdown("#### ➕ Create New Project")
+        
+        # Styled container
+        st.markdown("""
+            <div style='
+                background: linear-gradient(135deg, rgba(236, 72, 153, 0.08) 0%, rgba(139, 92, 246, 0.08) 100%);
+                border: 1.5px solid #8b5cf6;
+                border-radius: 1rem;
+                padding: 1.5rem;
+                margin-bottom: 1rem;
+            '>
+        """, unsafe_allow_html=True)
         
         project_name = st.text_input(
             "Project Name",
@@ -389,6 +462,7 @@ def show_project_dashboard():
                                 except:
                                     pass
                             
+                            st.balloons()
                             st.rerun()
                         else:
                             st.error(f"❌ Failed to ingest data: {msg}")
@@ -398,6 +472,9 @@ def show_project_dashboard():
                 except Exception as e:
                     st.error(f"❌ Error creating project: {e}")
                     logger.error(f"Project creation error: {e}")
+        
+        # Close styled container
+        st.markdown("</div>", unsafe_allow_html=True)
 
 
 def load_schema(schema_name: str):

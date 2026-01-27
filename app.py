@@ -12,6 +12,16 @@ from pathlib import Path
 import tempfile
 import os
 
+# Load custom CSS for modern UI
+def load_custom_css():
+    """Load custom CSS styling for the application."""
+    css_file = Path(__file__).parent / "styles" / "custom.css"
+    if css_file.exists():
+        with open(css_file) as f:
+            st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
+    else:
+        logger.warning(f"Custom CSS file not found at {css_file}")
+
 # Import custom modules
 from modules.project_manager import get_project_manager
 from modules.data_ingestion import get_data_ingestor
@@ -126,8 +136,15 @@ def check_database_connection():
 
 def show_project_dashboard():
     """Display project selection/creation dashboard."""
-    st.title("📂 Text-to-SQL Projects")
-    st.markdown("Manage your data projects with isolated schemas")
+    # Hero section with gradient text
+    st.markdown("""
+        <h1 style='text-align: center; font-size: 3rem; margin-bottom: 0.5rem;'>
+            🤖 Text-to-SQL Assistant
+        </h1>
+        <p style='text-align: center; font-size: 1.2rem; color: #94a3b8; margin-bottom: 2rem;'>
+            Transform natural language into powerful SQL queries ✨
+        </p>
+    """, unsafe_allow_html=True)
     
     # ========== DATABASE CONNECTION STATUS SECTION ==========
     st.divider()
@@ -761,11 +778,14 @@ def show_chat_interface():
 def main():
     """Main application function."""
     st.set_page_config(
-        page_title="Text-to-SQL Chatbot",
-        page_icon="💬",
+        page_title="✨ Text-to-SQL Chatbot",
+        page_icon="🤖",
         layout="wide",
         initial_sidebar_state="expanded"
     )
+    
+    # Load custom CSS for modern UI styling
+    load_custom_css()
     
     # Initialize session state
     initialize_session_state()

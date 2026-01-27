@@ -1,0 +1,523 @@
+/* ============================================
+   CUSTOM STYLES FOR TEXT-TO-SQL CHATBOT
+   Modern, Cute & Interactive UI Design
+   ============================================ */
+
+/* Import Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@400;500;600;700&display=swap');
+
+/* ============= ROOT VARIABLES ============= */
+:root {
+    /* Primary Colors - Vibrant Purple/Blue Theme */
+    --primary: #6366f1;          /* Indigo */
+    --primary-light: #818cf8;
+    --primary-dark: #4f46e5;
+    --secondary: #ec4899;        /* Pink */
+    --accent: #10b981;           /* Green */
+    
+    /* Background Colors */
+    --bg-main: #0f172a;          /* Dark slate */
+    --bg-card: #1e293b;          /* Slate 800 */
+    --bg-hover: #334155;         /* Slate 700 */
+    --bg-chat-user: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --bg-chat-assistant: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    
+    /* Text Colors */
+    --text-primary: #f1f5f9;     /* Slate 100 */
+    --text-secondary: #cbd5e1;   /* Slate 300 */
+    --text-muted: #94a3b8;       /* Slate 400 */
+    
+    /* Border & Shadow */
+    --border-color: #334155;
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.12);
+    --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.15);
+    --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.3);
+    --shadow-glow: 0 0 20px rgba(99, 102, 241, 0.3);
+    
+    /* Spacing */
+    --spacing-xs: 0.5rem;
+    --spacing-sm: 0.75rem;
+    --spacing-md: 1rem;
+    --spacing-lg: 1.5rem;
+    --spacing-xl: 2rem;
+    
+    /* Border Radius */
+    --radius-sm: 0.5rem;
+    --radius-md: 0.75rem;
+    --radius-lg: 1rem;
+    --radius-xl: 1.5rem;
+    --radius-full: 9999px;
+}
+
+/* ============= GLOBAL STYLES ============= */
+
+* {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Main App Background */
+[data-testid="stAppViewContainer"] {
+    background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%) !important;
+    font-family: 'Inter', sans-serif !important;
+}
+
+/* Sidebar Styling */
+[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%) !important;
+    border-right: 1px solid var(--border-color) !important;
+}
+
+[data-testid="stSidebar"] > div:first-child {
+    padding: var(--spacing-lg) !important;
+}
+
+/* Main Content Area */
+.main .block-container {
+    padding: var(--spacing-xl) var(--spacing-lg) !important;
+    max-width: 1200px !important;
+}
+
+/* ============= HEADERS & TEXT ============= */
+
+h1, h2, h3, h4, h5, h6 {
+    font-family: 'Poppins', sans-serif !important;
+    color: var(--text-primary) !important;
+    font-weight: 700 !important;
+}
+
+h1 {
+    font-size: 2.5rem !important;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: var(--spacing-lg) !important;
+}
+
+h2 {
+    font-size: 1.875rem !important;
+    color: var(--primary-light) !important;
+}
+
+h3 {
+    font-size: 1.5rem !important;
+}
+
+p, span, div {
+    color: var(--text-secondary) !important;
+}
+
+/* ============= BUTTONS ============= */
+
+/* Primary Buttons */
+.stButton > button {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%) !important;
+    color: white !important;
+    border: none !important;
+    border-radius: var(--radius-md) !important;
+    padding: 0.75rem 1.5rem !important;
+    font-weight: 600 !important;
+    font-family: 'Poppins', sans-serif !important;
+    box-shadow: var(--shadow-md) !important;
+    letter-spacing: 0.025em !important;
+}
+
+.stButton > button:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: var(--shadow-lg), var(--shadow-glow) !important;
+    background: linear-gradient(135deg, var(--primary-light) 0%, var(--primary) 100%) !important;
+}
+
+.stButton > button:active {
+    transform: translateY(0) !important;
+}
+
+/* Download Button Specific */
+.stDownloadButton > button {
+    background: linear-gradient(135deg, var(--secondary) 0%, #be185d 100%) !important;
+}
+
+.stDownloadButton > button:hover {
+    background: linear-gradient(135deg, #f472b6 0%, var(--secondary) 100%) !important;
+}
+
+/* ============= INPUT FIELDS ============= */
+
+/* Text Input */
+.stTextInput > div > div > input,
+.stTextArea > div > div > textarea {
+    background-color: var(--bg-card) !important;
+    border: 2px solid var(--border-color) !important;
+    border-radius: var(--radius-md) !important;
+    color: var(--text-primary) !important;
+    padding: 0.75rem var(--spacing-md) !important;
+    font-family: 'Inter', sans-serif !important;
+}
+
+.stTextInput > div > div > input:focus,
+.stTextArea > div > div > textarea:focus {
+    border-color: var(--primary) !important;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1) !important;
+}
+
+/* Chat Input (specific) */
+.stChatInput > div > div > input {
+    background-color: var(--bg-card) !important;
+    border: 2px solid var(--border-color) !important;
+    border-radius: var(--radius-full) !important;
+    padding: var(--spacing-md) var(--spacing-lg) !important;
+    color: var(--text-primary) !important;
+    font-size: 1rem !important;
+}
+
+.stChatInput > div > div > input:focus {
+    border-color: var(--primary) !important;
+    box-shadow: var(--shadow-glow) !important;
+}
+
+/* ============= SELECTBOX & DROPDOWNS ============= */
+
+.stSelectbox > div > div > div {
+    background-color: var(--bg-card) !important;
+    border: 2px solid var(--border-color) !important;
+    border-radius: var(--radius-md) !important;
+    color: var(--text-primary) !important;
+}
+
+.stSelectbox > div > div > div:hover {
+    border-color: var(--primary-light) !important;
+}
+
+/* ============= FILE UPLOADER ============= */
+
+[data-testid="stFileUploader"] {
+    background-color: var(--bg-card) !important;
+    border: 2px dashed var(--border-color) !important;
+    border-radius: var(--radius-lg) !important;
+    padding: var(--spacing-xl) !important;
+}
+
+[data-testid="stFileUploader"]:hover {
+    border-color: var(--primary) !important;
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, rgba(139, 92, 246, 0.05) 100%) !important;
+}
+
+/* ============= EXPANDERS ============= */
+
+.streamlit-expanderHeader {
+    background: var(--bg-card) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--radius-md) !important;
+    color: var(--text-primary) !important;
+    font-weight: 600 !important;
+    padding: var(--spacing-md) var(--spacing-lg) !important;
+}
+
+.streamlit-expanderHeader:hover {
+    background: var(--bg-hover) !important;
+    border-color: var(--primary) !important;
+}
+
+.streamlit-expanderContent {
+    background: var(--bg-card) !important;
+    border: 1px solid var(--border-color) !important;
+    border-top: none !important;
+    border-radius: 0 0 var(--radius-md) var(--radius-md) !important;
+    padding: var(--spacing-lg) !important;
+}
+
+/* ============= CHAT MESSAGES ============= */
+
+/* Chat Message Container */
+.stChatMessage {
+    background: var(--bg-card) !important;
+    border-radius: var(--radius-lg) !important;
+    padding: var(--spacing-lg) !important;
+    margin-bottom: var(--spacing-md) !important;
+    border: 1px solid var(--border-color) !important;
+    box-shadow: var(--shadow-sm) !important;
+}
+
+/* User Messages */
+[data-testid="stChatMessageContent"]:has(.stMarkdown):has(> div > p:first-child:contains("You")) {
+    background: var(--bg-chat-user) !important;
+    border-left: 4px solid var(--primary) !important;
+}
+
+/* Assistant Messages */
+.stChatMessage[data-testid="stChatMessage"][data-role="assistant"] {
+    background: linear-gradient(135deg, rgba(236, 72, 153, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%) !important;
+    border-left: 4px solid var(--secondary) !important;
+}
+
+/* ============= DATAFRAMES ============= */
+
+[data-testid="stDataFrame"],
+.dataframe {
+    background: var(--bg-card) !important;
+    border-radius: var(--radius-md) !important;
+    border: 1px solid var(--border-color) !important;
+    overflow: hidden !important;
+}
+
+.dataframe thead tr {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%) !important;
+}
+
+.dataframe thead th {
+    color: white !important;
+    font-weight: 600 !important;
+    padding: var(--spacing-md) !important;
+    border: none !important;
+}
+
+.dataframe tbody tr {
+    background: var(--bg-card) !important;
+}
+
+.dataframe tbody tr:hover {
+    background: var(--bg-hover) !important;
+}
+
+.dataframe td {
+    color: var(--text-secondary) !important;
+    padding: var(--spacing-sm) var(--spacing-md) !important;
+    border-bottom: 1px solid var(--border-color) !important;
+}
+
+/* ============= CODE BLOCKS ============= */
+
+pre, code {
+    background: var(--bg-card) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--radius-md) !important;
+    color: var(--text-primary) !important;
+    font-family: 'Fira Code', 'Courier New', monospace !important;
+}
+
+pre {
+    padding: var(--spacing-lg) !important;
+}
+
+code {
+    padding: 0.2rem 0.4rem !important;
+}
+
+/* ============= INFO/SUCCESS/WARNING/ERROR BOXES ============= */
+
+.stAlert {
+    border-radius: var(--radius-md) !important;
+    border: none !important;
+    padding: var(--spacing-lg) !important;
+}
+
+/* Info */
+[data-baseweb="notification"][kind="info"] {
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(99, 102, 241, 0.1) 100%) !important;
+    border-left: 4px solid #3b82f6 !important;
+}
+
+/* Success */
+[data-baseweb="notification"][kind="success"] {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(5, 150, 105, 0.1) 100%) !important;
+    border-left: 4px solid var(--accent) !important;
+}
+
+/* Warning */
+[data-baseweb="notification"][kind="warning"] {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(217, 119, 6, 0.1) 100%) !important;
+    border-left: 4px solid #f59e0b !important;
+}
+
+/* Error */
+[data-baseweb="notification"][kind="error"] {
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, rgba(220, 38, 38, 0.1) 100%) !important;
+    border-left: 4px solid #ef4444 !important;
+}
+
+/* ============= SPINNER/LOADER ============= */
+
+.stSpinner > div {
+    border-color: var(--primary) var(--primary-light) var(--primary-dark) transparent !important;
+}
+
+/* ============= DIVIDERS ============= */
+
+hr {
+    border: none !important;
+    height: 1px !important;
+    background: linear-gradient(90deg, transparent 0%, var(--border-color) 50%, transparent 100%) !important;
+    margin: var(--spacing-xl) 0 !important;
+}
+
+/* ============= METRICS ============= */
+
+[data-testid="stMetric"] {
+    background: var(--bg-card) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--radius-lg) !important;
+    padding: var(--spacing-lg) !important;
+    box-shadow: var(--shadow-sm) !important;
+}
+
+[data-testid="stMetricLabel"] {
+    color: var(--text-muted) !important;
+    font-weight: 600 !important;
+    text-transform: uppercase !important;
+    font-size: 0.75rem !important;
+    letter-spacing: 0.05em !important;
+}
+
+[data-testid="stMetricValue"] {
+    color: var(--primary-light) !important;
+    font-size: 2rem !important;
+    font-weight: 700 !important;
+}
+
+/* ============= TABS ============= */
+
+.stTabs [data-baseweb="tab-list"] {
+    gap: var(--spacing-sm) !important;
+    background: var(--bg-card) !important;
+    border-radius: var(--radius-md) !important;
+    padding: var(--spacing-sm) !important;
+}
+
+.stTabs [data-baseweb="tab"] {
+    background: transparent !important;
+    border-radius: var(--radius-sm) !important;
+    color: var(--text-secondary) !important;
+    font-weight: 600 !important;
+    padding: var(--spacing-sm) var(--spacing-lg) !important;
+}
+
+.stTabs [data-baseweb="tab"]:hover {
+    background: var(--bg-hover) !important;
+    color: var(--primary-light) !important;
+}
+
+.stTabs [data-baseweb="tab"][aria-selected="true"] {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%) !important;
+    color: white !important;
+}
+
+/* ============= SCROLLBAR ============= */
+
+::-webkit-scrollbar {
+    width: 8px !important;
+    height: 8px !important;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg-main) !important;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--border-color) !important;
+    border-radius: var(--radius-full) !important;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--primary) !important;
+}
+
+/* ============= ANIMATIONS ============= */
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateX(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+
+/* Apply fade-in animation to new elements */
+[data-testid="stChatMessage"] {
+    animation: fadeIn 0.5s ease-out !important;
+}
+
+.element-container {
+    animation: fadeIn 0.3s ease-out !important;
+}
+
+/* ============= BADGES & TAGS ============= */
+
+.stBadge,
+.css-badge {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%) !important;
+    color: white !important;
+    border-radius: var(--radius-full) !important;
+    padding: 0.25rem 0.75rem !important;
+    font-size: 0.875rem !important;
+    font-weight: 600 !important;
+    display: inline-block !important;
+}
+
+/* ============= CUSTOM UTILITY CLASSES ============= */
+
+.gradient-text {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.card {
+    background: var(--bg-card) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--radius-lg) !important;
+    padding: var(--spacing-lg) !important;
+    box-shadow: var(--shadow-md) !important;
+}
+
+.card:hover {
+    border-color: var(--primary) !important;
+    box-shadow: var(--shadow-lg), var(--shadow-glow) !important;
+    transform: translateY(-2px) !important;
+}
+
+/* ============= RESPONSIVE DESIGN ============= */
+
+@media (max-width: 768px) {
+    h1 {
+        font-size: 2rem !important;
+    }
+    
+    .main .block-container {
+        padding: var(--spacing-md) !important;
+    }
+    
+    .stButton > button {
+        padding: 0.625rem 1.25rem !important;
+        font-size: 0.875rem !important;
+    }
+}
+
+/* ============= HIDE STREAMLIT BRANDING ============= */
+
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+header {visibility: hidden;}

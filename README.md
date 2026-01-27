@@ -16,9 +16,9 @@ A production-ready natural language to SQL query chatbot powered by Groq LLaMA 3
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue)](https://huggingface.co/spaces/Mokshank/DB_talk)
+[![Hugging Face Spaces](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue)](https://huggingface.co/spaces/Mokshank/DB_talks)
 
-🚀 **[Try Live Demo on Hugging Face Spaces](https://huggingface.co/spaces/Mokshank/DB_talk)**
+🚀 **[Try Live Demo on Hugging Face Spaces](https://huggingface.co/spaces/Mokshank/DB_talks)**
 
 ---
 

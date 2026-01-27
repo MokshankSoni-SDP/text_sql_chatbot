@@ -29,7 +29,7 @@ class ChatHistoryManager:
         """
         self.db = get_db_instance()
         self.schema_name = schema_name
-        self.history_limit = int(os.getenv('CHAT_HISTORY_LIMIT', '5'))
+        self.history_limit = int(os.getenv('CHAT_HISTORY_LIMIT', '10'))
         
         # Ensure chat_history table exists in this schema
         self.ensure_chat_history_table()

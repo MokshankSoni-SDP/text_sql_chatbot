@@ -288,6 +288,97 @@ Generate the corrected SQL query now:"""
             logger.error(f"Error generating answer: {e}")
             raise
     
+    def describe_data_rows(
+        self,
+        user_question: str,
+        sql_result: List[tuple],
+        column_names: List[str],
+        max_rows: int = 10
+    ) -> str:
+        """
+        Generate a descriptive, user-friendly narrative of the data rows.
+        Takes top N rows and describes them in natural language.
+        
+        Args:
+            user_question: Original user question
+            sql_result: Query results as list of tuples
+            column_names: Column names from the result
+            max_rows: Maximum number of rows to describe (default: 10)
+            
+        Returns:
+            str: Descriptive narrative of the data
+            
+        Raises:
+            Exception: If API call fails
+        """
+        if not sql_result or not column_names:
+            return "No data available to describe."
+        
+        # Take only top N rows
+        rows_to_describe = sql_result[:max_rows]
+        
+        # Build data representation
+        data_text = f"Question: {user_question}\n\n"
+        data_text += f"Column Names: {', '.join(column_names)}\n\n"
+        data_text += f"Data ({len(rows_to_describe)} rows):\n"
+        
+        for i, row in enumerate(rows_to_describe, 1):
+            row_dict = dict(zip(column_names, row))
+            data_text += f"\nRow {i}:\n"
+            for col, val in row_dict.items():
+                data_text += f"  - {col}: {val}\n"
+        
+        if len(sql_result) > max_rows:
+            data_text += f"\n... and {len(sql_result) - max_rows} more rows not shown"
+        
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are a data storyteller. Your job is to describe database results in a natural, "
+                            "conversational, and user-friendly way.\n\n"
+                            "RULES:\n"
+                            "1. Write in a narrative, descriptive style - like you're explaining to a colleague\n"
+                            "2. Do NOT include technical IDs (product_id, user_id, etc.) - focus on meaningful data\n"
+                            "3. Highlight interesting patterns, trends, or notable items\n"
+                            "4. Use bullet points or numbered lists for clarity\n"
+                            "5. Make it easy to read and understand\n"
+                            "6. If there are prices, brands, categories, names - emphasize those\n"
+                            "7. Keep it concise but informative (3-5 sentences per item maximum)\n"
+                            "8. Group similar items if appropriate\n\n"
+                            "Example good output:\n"
+                            "'Here are the top products found:\n"
+                            "1. **Nike Air Max 90** - A footwear item in the Men's category, priced at $130.00\n"
+                            "2. **Nike React Infinity** - Another footwear option, also for Men, at $160.00\n"
+                            "3. **Nike Dri-FIT Shirt** - An apparel item in Men's category for $45.00'\n\n"
+                            "BAD example (avoid IDs):\n"
+                            "'Product FW0005 (Nike Air Max) with id=FW0005 in category footwear'"
+                        )
+                    },
+                    {
+                        "role": "user",
+                        "content": f"Describe this data in a friendly, readable way:\n\n{data_text}"
+                    }
+                ],
+                temperature=0.4,
+                max_tokens=600
+            )
+            
+            description = response.choices[0].message.content.strip()
+            logger.info(f"Generated descriptive narrative for {len(rows_to_describe)} rows")
+            return description
+            
+        except Exception as e:
+            logger.error(f"Error generating data description: {e}")
+            # Fallback to simple formatting
+            fallback = f"Showing {len(rows_to_describe)} rows:\n"
+            for i, row in enumerate(rows_to_describe, 1):
+                fallback += f"{i}. {', '.join(str(v) for v in row)}\n"
+            return fallback
+    
     def _build_sql_prompt(
         self,
         user_question: str,

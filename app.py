@@ -531,6 +531,26 @@ def process_user_question(user_question: str, schema: str, schema_name: str):
             else:
                 st.info("No results found even after retry")
         
+        # Generate descriptive narrative of top 10 rows
+        if results and len(results) > 0:
+            with st.spinner("📝 Describing your data..."):
+                try:
+                    data_description = llm_client.describe_data_rows(
+                        user_question=user_question,
+                        sql_result=results,
+                        column_names=column_names,
+                        max_rows=10
+                    )
+                    
+                    # Display descriptive narrative
+                    st.markdown("### 📖 Data Overview")
+                    st.markdown(data_description)
+                    st.divider()
+                    
+                except Exception as desc_error:
+                    logger.error(f"Error generating data description: {desc_error}")
+                    # Continue even if description fails
+        
         # Generate natural language answer
         with st.spinner("✨ Generating answer..."):
             answer = llm_client.result_to_english(

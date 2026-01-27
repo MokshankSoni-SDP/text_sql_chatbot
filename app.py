@@ -532,6 +532,7 @@ def process_user_question(user_question: str, schema: str, schema_name: str):
                 st.info("No results found even after retry")
         
         # Generate descriptive narrative of top 10 rows
+        data_description = None
         if results and len(results) > 0:
             with st.spinner("📝 Describing your data..."):
                 try:
@@ -560,9 +561,16 @@ def process_user_question(user_question: str, schema: str, schema_name: str):
                 column_names=column_names
             )
         
-        # Store in chat history
+        # Combine descriptive narrative with answer for chat history
+        full_response = ""
+        if data_description:
+            full_response = f"### 📖 Data Overview\n\n{data_description}\n\n---\n\n### Summary\n\n{answer}"
+        else:
+            full_response = answer
+        
+        # Store in chat history (with descriptive narrative included)
         chat_manager.insert_message(st.session_state.session_id, "user", user_question, llm_client=llm_client)
-        chat_manager.insert_message(st.session_state.session_id, "assistant", answer, llm_client=llm_client)
+        chat_manager.insert_message(st.session_state.session_id, "assistant", full_response, llm_client=llm_client)
         
         return answer
         

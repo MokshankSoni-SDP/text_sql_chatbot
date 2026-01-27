@@ -620,7 +620,8 @@ def process_user_question(user_question: str, schema: str, schema_name: str):
         chat_manager.insert_message(st.session_state.session_id, "user", user_question, llm_client=llm_client)
         chat_manager.insert_message(st.session_state.session_id, "assistant", full_response, llm_client=llm_client)
         
-        return answer
+        # Return full response for display (includes Data Overview + Summary)
+        return full_response
         
     except Exception as e:
         error_msg = f"❌ Error: {str(e)}"

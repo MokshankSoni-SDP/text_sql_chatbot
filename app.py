@@ -440,8 +440,8 @@ def process_user_question(user_question: str, schema: str, schema_name: str):
         chat_manager = get_chat_history_manager(schema_name=schema_name)
         llm_client = get_llm_client()
         
-        # Get chat history for context
-        chat_history = chat_manager.format_history_for_llm(st.session_state.session_id)
+        # Get chat history for context (with automatic summarization)
+        chat_history = chat_manager.format_history_for_llm(st.session_state.session_id, llm_client=llm_client)
         
         # ═══════════════════════════════════════════════════════════
         # STEP 1: INTENT CLASSIFICATION (The Router)

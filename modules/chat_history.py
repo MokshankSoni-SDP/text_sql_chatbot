@@ -64,29 +64,19 @@ class ChatHistoryManager:
     
     def insert_message(self, session_id: str, role: str, content: str, llm_client=None) -> bool:
         """
-        Insert a chat message into the database with smart summarization.
+        Insert a chat message into the database.
+        Stores the FULL content (including detailed Data Overview sections).
+        Summarization happens only when retrieving for LLM context.
         
         Args:
             session_id: Unique session identifier
             role: Message role ('user' or 'assistant')
-            content: Message content
-            llm_client: Optional LLM client for smart summarization
+            content: Message content (full version)
+            llm_client: Optional LLM client (not used for insert, kept for compatibility)
             
         Returns:
             bool: True if successful, False otherwise
         """
-        # Smart summarization for long assistant responses
-        content_to_store = content
-        
-        if role == 'assistant' and len(content) > 300 and llm_client is not None:
-            try:
-                logger.info(f"📝 Summarizing long assistant response ({len(content)} chars)...")
-                content_to_store = llm_client.summarize_text(content)
-                logger.info(f"✅ Summarized to {len(content_to_store)} chars")
-            except Exception as e:
-                logger.warning(f"⚠️ Summarization failed, storing original content: {e}")
-                content_to_store = content  # Fallback to original
-        
         query = f"""
             INSERT INTO {self.schema_name}.chat_history (session_id, role, content, timestamp)
             VALUES (%s, %s, %s, %s);
@@ -95,10 +85,10 @@ class ChatHistoryManager:
         try:
             self.db.execute_query(
                 query,
-                (session_id, role, content_to_store, datetime.now()),
+                (session_id, role, content, datetime.now()),
                 fetch=False
             )
-            logger.info(f"✅ Inserted {role} message for session {session_id[:8]}...")
+            logger.info(f"✅ Inserted {role} message ({len(content)} chars) for session {session_id[:8]}...")
             return True
         except Exception as e:
             error_msg = str(e).lower()
@@ -177,17 +167,19 @@ class ChatHistoryManager:
             return False
     
     
-    def format_history_for_llm(self, session_id: str, limit: int = None) -> str:
+    def format_history_for_llm(self, session_id: str, limit: int = None, llm_client=None) -> str:
         """
         Format chat history as a string for LLM context.
-        Note: Messages are already intelligently summarized at insert time via LLM.
+        IMPORTANT: Automatically summarizes long assistant messages (>500 chars) to keep context concise.
+        This allows full messages to be stored but summarized versions to be passed to LLM.
         
         Args:
             session_id: Unique session identifier
             limit: Maximum number of messages to include
+            llm_client: Optional LLM client for summarization (recommended)
             
         Returns:
-            str: Formatted chat history
+            str: Formatted chat history with summarized long messages
         """
         if limit is None:
             limit = self.history_limit
@@ -202,9 +194,21 @@ class ChatHistoryManager:
         for msg in messages:
             role = msg['role'].upper()
             content = msg['content']
+            
+            # Summarize long assistant responses for LLM context
+            if role == 'ASSISTANT' and len(content) > 500 and llm_client is not None:
+                try:
+                    logger.info(f"📝 Summarizing assistant message ({len(content)} chars) for LLM context...")
+                    summarized = llm_client.summarize_text(content)
+                    content = summarized
+                    logger.info(f"✅ Summarized to {len(content)} chars for LLM")
+                except Exception as e:
+                    logger.warning(f"⚠️ Summarization failed, using original: {e}")
+            
             formatted_parts.append(f"{role}: {content}")
         
         return "\n".join(formatted_parts)
+
 
 
 def get_chat_history_manager(schema_name: str = 'public') -> ChatHistoryManager:

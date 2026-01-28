@@ -218,16 +218,18 @@ class DataIngestor:
             
             # Generate embeddings if text columns exist
             if text_columns:
-                logger.info("Generating embeddings for semantic search...")
+                logger.info(f"🧠 Generating embeddings for {len(df)} rows with {len(text_columns)} text columns...")
                 embedding_service = get_embedding_service()
                 
                 # Build combined context for each row
+                logger.info("Building text contexts...")
                 contexts = []
                 for idx, row in df.iterrows():
                     context = self._build_embedding_context(row, text_columns)
                     contexts.append(context)
                 
-                # Generate batch embeddings
+                # Generate batch embeddings with progress tracking
+                logger.info(f"Generating {len(contexts)} embeddings in batches of 32...")
                 embeddings = embedding_service.generate_batch_embeddings(contexts, batch_size=32)
                 
                 # Add embedding column to dataframe

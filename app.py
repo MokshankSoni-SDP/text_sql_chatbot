@@ -596,231 +596,97 @@ def process_user_question(user_question: str, schema: str, schema_name: str):
         # ═══════════════════════════════════════════════════════════
         # STEP 1: INTENT CLASSIFICATION & DECOMPOSITION
         # ═══════════════════════════════════════════════════════════
-        with st.spinner("🔍 Understanding your request..."):
-            success, intent_result, error = intent_classifier.decompose_query(
-                user_query=user_question,
-                schema=schema,
-                chat_history=chat_history
-            )
+        # 🧠 INTENT CLASSIFICATION
+        with st.spinner("🧠 Analyzing intent..."):
+            intent = llm_client.classify_intent(user_question, chat_history)
         
-        if not success:
-            st.error(f"❌ Intent classification failed: {error}")
-            fallback_answer = "I'm having trouble understanding your request. Could you please rephrase it?"
+        # Check for General Chat
+        if intent == "GENERAL_CHAT":
+            with st.spinner("💭 Thinking..."):
+                answer = llm_client.general_chat(user_question, chat_history)
             
-            chat_manager.insert_message(st.session_state.session_id, "user", user_question, llm_client=llm_client)
-            chat_manager.insert_message(st.session_state.session_id, "assistant", fallback_answer, llm_client=llm_client)
-            return fallback_answer
-        
-        # Display intent badge
-        intent_type = intent_result.intent_type
-        st.info(f"🎯 Intent: **{intent_type.replace('_', ' ').title()}**")
-        
-        # ═══════════════════════════════════════════════════════════
-        # STEP 2: GUARDRAIL CHECKS
-        # ═══════════════════════════════════════════════════════════
-        
-        # Check 1: Clarification needed?
-        clarification_msg = guardrails.check_clarification_needed(intent_result)
-        if clarification_msg:
-            st.warning("⚠️ Need more details")
-            chat_manager.insert_message(st.session_state.session_id, "user", user_question, llm_client=llm_client)
-            chat_manager.insert_message(st.session_state.session_id, "assistant", clarification_msg, llm_client=llm_client)
-            return clarification_msg
-        
-        # Check 2: Out of scope?
-        out_of_scope_msg = guardrails.handle_out_of_scope(user_question, intent_result)
-        if out_of_scope_msg:
-            st.info("ℹ️ Out of scope")
-            chat_manager.insert_message(st.session_state.session_id, "user", user_question, llm_client=llm_client)
-            chat_manager.insert_message(st.session_state.session_id, "assistant", out_of_scope_msg, llm_client=llm_client)
-            return out_of_scope_msg
-        
-        # ═══════════════════════════════════════════════════════════
-        # STEP 3: HYBRID SEARCH vs TRADITIONAL SQL
-        # ═══════════════════════════════════════════════════════════
-        
-        # Determine if we should use hybrid search
-        use_hybrid = (
-            intent_result.semantic_query.strip() != "" and
-            intent_result.intent_type in ["product_search", "recommendation"]
-        )
-        
-        # Get table name from schema (simple extraction)
-        # Get table name from schema (skip chat_history)
-        import re
-        table_matches = re.findall(r'Table: ([^\n\r]+)', schema)
-        
-        # Filter out system tables like chat_history
-        valid_tables = [t.strip() for t in table_matches if t.strip().lower() != 'chat_history']
-        table_name = valid_tables[0] if valid_tables else None
-        
-        if not table_name:
-            st.error("❌ Could not determine table name from schema")
-            return "I couldn't identify the table to search. Please try uploading your data again."
-        
-        # Check if table has embeddings
-        has_embeddings = hybrid_search.check_vector_column_exists(schema_name, table_name)
-        
-        if use_hybrid and has_embeddings:
-            # ═══ HYBRID SEARCH PATH ═══
-            st.markdown("**Search Mode**: 🧠 Semantic + Filters")
-            with st.expander("🔎 Search Criteria", expanded=True):
-                st.write(f"**Intent**: `{intent_result.intent_type}`")
-                st.write(f"**Semantic Query**: `{intent_result.semantic_query}`")
-                st.write(f"**SQL Filters**: `{intent_result.sql_filters}`")
-            
-            # Generate embedding for semantic query
-            with st.spinner("🧠 Generating semantic embedding..."):
-                query_embedding = embedding_service.generate_embedding(intent_result.semantic_query)
-            
-            # Execute hybrid search
-            with st.spinner("🔎 Searching database..."):
-                # DEBUG: Force threshold 0.0 to see what the scores actually are
-                success, results, column_names, error = hybrid_search.execute_hybrid_search(
-                    schema_name=schema_name,
-                    table_name=table_name,
-                    sql_filters=intent_result.sql_filters,
-                    query_embedding=query_embedding,
-                    limit=10,
-                    similarity_threshold=0.0
-                )
-            
-            if not success:
-                st.error(f"❌ Search failed: {error}")
-                return f"Search failed: {error}"
-            
-            # Check for zero results
-            if len(results) == 0:
-                zero_results_msg = guardrails.handle_zero_results(user_question, intent_result, table_name)
-                st.warning("⚠️ No results found")
-                chat_manager.insert_message(st.session_state.session_id, "user", user_question, llm_client=llm_client)
-                chat_manager.insert_message(st.session_state.session_id, "assistant", zero_results_msg, llm_client=llm_client)
-                return zero_results_msg
-            
-            # Display results
-            with st.expander("📊 Search Results", expanded=True):
-                df = pd.DataFrame(results, columns=column_names)
-                # Remove embedding column from display
-                display_cols = [col for col in df.columns if col != 'embedding']
-                st.dataframe(
-                    df[display_cols],
-                    use_container_width=True,
-                    height=min(400, len(df) * 35 + 38)
-                )
-                st.caption(f"✅ {len(results)} result(s) - sorted by relevance")
-                
-                # Show top similarity score
-                if 'similarity_score' in df.columns:
-                    top_score = df['similarity_score'].iloc[0]
-                    st.metric("Top Match Score", f"{top_score:.2%}")
-                    
-                    # Suggest rephrase if low similarity
-                    suggestion = guardrails.suggest_rephrase(top_score)
-                    if suggestion:
-                        st.info(suggestion)
-            
-            # Generate natural language answer
-            with st.spinner("✨ Generating answer..."):
-                answer = llm_client.result_to_english(
-                    user_question=user_question,
-                    sql_query=f"Hybrid search: {intent_result.semantic_query}",
-                    sql_result=results[:5],
-                    column_names=[col for col in column_names if col not in ['embedding', 'similarity_score']]
-                )
-            
-            # Store in chat history
             chat_manager.insert_message(st.session_state.session_id, "user", user_question, llm_client=llm_client)
             chat_manager.insert_message(st.session_state.session_id, "assistant", answer, llm_client=llm_client)
-            
             return answer
+            
+        # ═══ STANDARD SQL QUERY PATH ═══
+        st.markdown("**Search Mode**: 💾 SQL Query")
         
-        else:
-            # ═══ TRADITIONAL SQL PATH ═══
-            st.markdown("**Search Mode**: 💾 SQL Query")
-            
-            if use_hybrid and not has_embeddings:
-                st.warning("ℹ️ Semantic search not available for this dataset. Using standard SQL.") 
-            
-            # Generate SQL query
-            with st.spinner("🤖 Generating SQL query..."):
+        # 1. Generate SQL
+        with st.spinner("🤖 Generating SQL query..."):
+            try:
                 sql_query = llm_client.text_to_sql(
                     user_question=user_question,
                     schema=schema,
                     chat_history=chat_history,
                     recent_query_results=st.session_state.get('recent_query_results', [])
                 )
-            
-            # Display generated SQL
-            with st.expander("📝 View SQL Query", expanded=False):
-                st.code(sql_query, language="sql")
-            
-            # Validate SQL
-            is_valid, validation_error = validate_sql(sql_query)
-            
-            if not is_valid:
-                error_msg = f"⚠️ SQL Validation Failed: {validation_error}"
-                st.error(error_msg)
-                chat_manager.insert_message(st.session_state.session_id, "user", user_question, llm_client=llm_client)
-                chat_manager.insert_message(st.session_state.session_id, "assistant", error_msg, llm_client=llm_client)
-                return error_msg
-            
-            # Execute SQL
-            with st.spinner("💾 Executing query..."):
-                success, results, column_names, exec_error = execute_sql(sql_query, schema_name=schema_name)
-            
-            if not success:
-                error_msg = f"❌ Query Execution Failed: {exec_error}"
-                st.error(error_msg)
-                chat_manager.insert_message(st.session_state.session_id, "user", user_question, llm_client=llm_client)
-                chat_manager.insert_message(st.session_state.session_id, "assistant", error_msg, llm_client=llm_client)
-                return error_msg
-            
-            # Check for zero results
-            if len(results) == 0:
-                st.warning("⚠️ Query returned 0 results")
-                zero_msg = f"I couldn't find any results for '{user_question}'. Try adjusting your filters or search criteria."
-                chat_manager.insert_message(st.session_state.session_id, "user", user_question, llm_client=llm_client)
-                chat_manager.insert_message(st.session_state.session_id, "assistant", zero_msg, llm_client=llm_client)
-                return zero_msg
-            
-            # Display results
-            with st.expander("📊 Query Results", expanded=True):
-                df = pd.DataFrame(results, columns=column_names)
-                st.dataframe(
-                    df,
-                    use_container_width=True,
-                    height=min(400, len(df) * 35 + 38)
-                )
-                st.caption(f"✅ {len(results)} row(s) returned")
                 
-                # Capture results for context
-                if 'recent_query_results' not in st.session_state:
-                    st.session_state.recent_query_results = []
-                    
-                st.session_state.recent_query_results.append({
-                    'question': user_question,
-                    'sql': sql_query,
-                    'results': results[:10],
-                    'columns': column_names
-                })
+                # Show generated SQL
+                with st.expander("📝 Generated SQL", expanded=True):
+                    st.code(sql_query, language="sql")
                 
-                if len(st.session_state.recent_query_results) > 2:
-                    st.session_state.recent_query_results.pop(0)
+            except Exception as e:
+                st.error(f"Error generating SQL: {e}")
+                return "I ran into an issue generating the database query."
+
+        # 2. Execute SQL
+        with st.spinner("⚡ Executing query..."):
+            try:
+                from modules.db_connection import get_db_instance, DatabaseConnection
+                db = get_db_instance()
+                
+                # Check connection
+                if not db.connection_pool:
+                     st.error("Database not connected")
+                     return "Database connection lost."
+
+                # Set search path to current project (CRITICAL)
+                # We need to ensure we query the correct schema
+                try:
+                    db.set_search_path(st.session_state.active_schema)
+                except Exception as e:
+                    st.error(f"Schema Connection Error: {e}")
+                    return "Could not connect to project schema."
+                
+                # Execute
+                results = db.execute_query(sql_query)
+                
+                # Get columns (hacky re-fetch or assume select *)
+                # Since execute_query just returns rows, we'll display as plain table
+                # For better UI, we should try to get columns.
+                
+            except Exception as e:
+                st.error(f"Execution Error: {e}")
+                return "Failed to execute the query on the database."
+        
+        # 3. Handle Results
+        if not results:
+             st.warning("⚠️ No results found")
+             # Optional: Retry logic here if desired, but user wanted simple
+             msg = "I couldn't find any results matching your query."
+             chat_manager.insert_message(st.session_state.session_id, "user", user_question, llm_client=llm_client)
+             chat_manager.insert_message(st.session_state.session_id, "assistant", msg, llm_client=llm_client)
+             return msg
+
+        # 4. Display Results
+        with st.expander("📊 Query Results", expanded=True):
+             st.dataframe(pd.DataFrame(results))
+             st.caption(f"Found {len(results)} rows")
+
+        # 5. Generate Answer
+        with st.spinner("📝 Analyzing results..."):
+            answer = llm_client.result_to_english(
+                user_question=user_question,
+                sql_query=sql_query,
+                sql_result=results
+            )
             
-            # Generate natural language answer
-            with st.spinner("✨ Generating answer..."):
-                answer = llm_client.result_to_english(
-                    user_question=user_question,
-                    sql_query=sql_query,
-                    sql_result=results,
-                    column_names=column_names
-                )
-            
-            # Store in chat history
-            chat_manager.insert_message(st.session_state.session_id, "user", user_question, llm_client=llm_client)
-            chat_manager.insert_message(st.session_state.session_id, "assistant", answer, llm_client=llm_client)
-            
-            return answer
+        chat_manager.insert_message(st.session_state.session_id, "user", user_question, llm_client=llm_client)
+        chat_manager.insert_message(st.session_state.session_id, "assistant", answer, llm_client=llm_client)
+        
+        return answer
+
     
     except Exception as e:
         error_msg = f"❌ Error processing question: {str(e)}"

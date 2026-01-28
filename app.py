@@ -113,6 +113,10 @@ def initialize_session_state():
     
     if 'aiven_last_check' not in st.session_state:
         st.session_state.aiven_last_check = None
+    
+    # Recent query results for context-aware follow-ups
+    if 'recent_query_results' not in st.session_state:
+        st.session_state.recent_query_results = []
 
 
 def check_database_connection():
@@ -578,14 +582,8 @@ def process_user_question(user_question: str, schema: str, schema_name: str):
         # ═══════════════════════════════════════════════════════════
         # STEP 1: INTENT CLASSIFICATION (The Router)
         # ═══════════════════════════════════════════════════════════
-        # Enhanced thinking state with glassmorphism
-        with st.spinner():
-            st.markdown("""
-                <div class='thinking-indicator'>
-                    <span style='font-size: 1.5rem;'>🔍</span>
-                    <span style='color: #4f46e5; font-weight: 600;'>Understanding your request...</span>
-                </div>
-            """, unsafe_allow_html=True)
+        # Enhanced thinking state
+        with st.spinner("🔍 Understanding your request..."):
             intent = llm_client.classify_intent(user_question, chat_history)
         
         # Display intent badge
@@ -612,18 +610,13 @@ def process_user_question(user_question: str, schema: str, schema_name: str):
         # Route B: SQL PIPELINE (needs database)
         # Continue with existing SQL processing logic...
         
-        # Generate SQL query with enhanced UI feedback
-        with st.spinner():
-            st.markdown("""
-                <div class='thinking-indicator'>
-                    <span style='font-size: 1.5rem;'>🤖</span>
-                    <span style='color: #4f46e5; font-weight: 600;'>Generating SQL query...</span>
-                </div>
-            """, unsafe_allow_html=True)
+        # Generate SQL query
+        with st.spinner("🤖 Generating SQL query..."):
             sql_query = llm_client.text_to_sql(
                 user_question=user_question,
                 schema=schema,
-                chat_history=chat_history
+                chat_history=chat_history,
+                recent_query_results=st.session_state.get('recent_query_results', [])
             )
         
         # Display generated SQL in expander (collapsed by default for clean UX)
@@ -644,14 +637,8 @@ def process_user_question(user_question: str, schema: str, schema_name: str):
             
             return error_msg
         
-        # Execute SQL (with schema context) and enhanced feedback
-        with st.spinner():
-            st.markdown("""
-                <div class='thinking-indicator'>
-                    <span style='font-size: 1.5rem;'>💾</span>
-                    <span style='color: #14b8a6; font-weight: 600;'>Executing query...</span>
-                </div>
-            """, unsafe_allow_html=True)
+        # Execute SQL (with schema context)
+        with st.spinner("💾 Executing query..."):
             success, results, column_names, exec_error = execute_sql(sql_query, schema_name=schema_name)
         
         if not success:
@@ -676,7 +663,8 @@ def process_user_question(user_question: str, schema: str, schema_name: str):
                         failed_sql=sql_query,
                         user_question=user_question,
                         schema=schema,
-                        chat_history=chat_history
+                        chat_history=chat_history,
+                        recent_query_results=st.session_state.get('recent_query_results', [])
                     )
                 
                 with st.expander("🔧 Corrected SQL Query (Retry)", expanded=True):
@@ -715,6 +703,19 @@ def process_user_question(user_question: str, schema: str, schema_name: str):
                     height=min(400, len(df) * 35 + 38)  # Dynamic height
                 )
                 st.caption(f"✅ {len(results)} row(s) returned")
+                
+                # ═══ CAPTURE RESULTS FOR CONTEXT-AWARE FOLLOW-UPS ═══
+                # Store recent query results (keep last 2 queries, first 10 rows each)
+                st.session_state.recent_query_results.append({
+                    'question': user_question,
+                    'sql': sql_query,
+                    'results': results[:10],  # Only keep first 10 rows for context
+                    'columns': column_names
+                })
+                
+                # Keep only last 2 queries to avoid token overflow
+                if len(st.session_state.recent_query_results) > 2:
+                    st.session_state.recent_query_results.pop(0)
                 
                 # Auto-chart generation for small datasets
                 if len(results) <= 10 and len(results) > 0:
@@ -784,14 +785,8 @@ def process_user_question(user_question: str, schema: str, schema_name: str):
                     logger.error(f"Error generating data description: {desc_error}")
                     # Continue even if description fails
         
-        # Generate natural language answer with enhanced feedback
-        with st.spinner():
-            st.markdown("""
-                <div class='thinking-indicator'>
-                    <span style='font-size: 1.5rem;'>✨</span>
-                    <span style='color: #4f46e5; font-weight: 600;'>Crafting your answer...</span>
-                </div>
-            """, unsafe_allow_html=True)
+        # Generate natural language answer
+        with st.spinner("✨ Generating answer..."):
             answer = llm_client.result_to_english(
                 user_question=user_question,
                 sql_query=sql_query,
@@ -985,6 +980,7 @@ def show_chat_interface():
                 chat_manager = get_chat_history_manager(schema_name=st.session_state.active_schema)
                 chat_manager.clear_session_history(st.session_state.session_id)
                 st.session_state.messages = []
+                st.session_state.recent_query_results = []  # Also clear context
                 st.success("Chat cleared!")
                 st.rerun()
             except Exception as e:

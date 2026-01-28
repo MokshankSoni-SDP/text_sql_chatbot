@@ -225,7 +225,8 @@ Return ONLY one word: either "NEEDS_DATABASE" or "GENERAL_CHAT"."""
         self,
         user_question: str,
         schema: str,
-        chat_history: str = ""
+        chat_history: str = "",
+        recent_query_results: List[Dict] = None
     ) -> str:
         """
         Convert natural language question to SQL query.
@@ -234,6 +235,7 @@ Return ONLY one word: either "NEEDS_DATABASE" or "GENERAL_CHAT"."""
             user_question: User's question in natural language
             schema: Database schema information
             chat_history: Previous conversation context (optional)
+            recent_query_results: Recent query results for context-aware follow-ups (optional)
             
         Returns:
             str: Generated SQL query
@@ -241,7 +243,7 @@ Return ONLY one word: either "NEEDS_DATABASE" or "GENERAL_CHAT"."""
         Raises:
             Exception: If API call fails
         """
-        prompt = self._build_sql_prompt(user_question, schema, chat_history)
+        prompt = self._build_sql_prompt(user_question, schema, chat_history, recent_query_results)
         
         try:
             response = self.client.chat.completions.create(
@@ -287,7 +289,8 @@ Return ONLY one word: either "NEEDS_DATABASE" or "GENERAL_CHAT"."""
         failed_sql: str,
         user_question: str,
         schema: str,
-        chat_history: str = ""
+        chat_history: str = "",
+        recent_query_results: List[Dict] = None
     ) -> str:
         """
         Retry SQL generation with corrective feedback when initial query returns 0 results.
@@ -298,10 +301,18 @@ Return ONLY one word: either "NEEDS_DATABASE" or "GENERAL_CHAT"."""
             user_question: Original user question
             schema: Database schema with possible values
             chat_history: Previous conversation context
+            recent_query_results: Recent query results for context (optional)
             
         Returns:
             str: Corrected SQL query
         """
+        # Build context parts
+        context_parts = []
+        
+        if recent_query_results:
+            context_parts.append(self._build_query_results_context(recent_query_results))
+            context_parts.append("")
+        
         corrective_prompt = f"""The previous query returned 0 results. This likely means you used an invalid filter value.
 
 FAILED QUERY:
@@ -309,6 +320,8 @@ FAILED QUERY:
 
 ORIGINAL QUESTION:
 {user_question}
+
+{chr(10).join(context_parts)}
 
 {schema}
 
@@ -507,16 +520,61 @@ Generate the corrected SQL query now:"""
             for i, row in enumerate(rows_to_describe, 1):
                 fallback += f"{i}. {', '.join(str(v) for v in row)}\n"
             return fallback
+    def _build_query_results_context(self, recent_queries: List[Dict]) -> str:
+        """
+        Build context string from recent query results.
+        
+        Args:
+            recent_queries: List of dicts with {question, sql, results, columns}
+            
+        Returns:
+            Formatted context string showing what data was previously retrieved
+        """
+        if not recent_queries:
+            return ""
+        
+        parts = ["=== RECENT QUERY CONTEXT (for reference) ==="]
+        parts.append("The user previously queried the following data. You can reference this in your SQL if the current question refers to 'these', 'those', or 'previous results'.\n")
+        
+        for i, query_data in enumerate(recent_queries, 1):
+            parts.append(f"Previous Query #{i}:")
+            parts.append(f"  User asked: \"{query_data['question']}\"")
+            parts.append(f"  Results returned ({len(query_data['results'])} rows):")
+            
+            # Format first few rows
+            for row_idx, row in enumerate(query_data['results'][:5], 1):
+                row_items = []
+                for col, val in zip(query_data['columns'], row):
+                    # Truncate long values
+                    val_str = str(val)[:50]
+                    row_items.append(f"{col}={val_str}")
+                row_str = ", ".join(row_items)
+                parts.append(f"    Row {row_idx}: {row_str}")
+            
+            if len(query_data['results']) > 5:
+                parts.append(f"    ... ({len(query_data['results']) - 5} more rows)")
+            parts.append("")
+        
+        parts.append("=== END CONTEXT ===\n")
+        return "\n".join(parts)
     
     def _build_sql_prompt(
         self,
         user_question: str,
         schema: str,
-        chat_history: str
+        chat_history: str,
+        recent_query_results: List[Dict] = None
     ) -> str:
-        """Build prompt for SQL generation."""
+        """Build prompt for SQL generation with optional recent query results context."""
         parts = []
         
+        # Add recent query results context FIRST (most important for follow-ups)
+        if recent_query_results:
+            results_context = self._build_query_results_context(recent_query_results)
+            parts.append(results_context)
+            parts.append("")
+        
+        # Then add chat history
         if chat_history:
             parts.append(chat_history)
             parts.append("")
@@ -526,6 +584,8 @@ Generate the corrected SQL query now:"""
         parts.append(f"USER QUESTION: {user_question}")
         parts.append("")
         parts.append("Generate a SQL query to answer this question.")
+        if recent_query_results:
+            parts.append("IMPORTANT: If the question refers to previous results (like 'these', 'those', 'among them'), use the RECENT QUERY CONTEXT above to understand what data the user is referring to.")
         
         return "\n".join(parts)
     

@@ -29,7 +29,7 @@ class SchemaExtractor:
         self.db = get_db_instance()
         # Accept schema as parameter, fallback to env var, then 'public'
         self.schema_name = schema_name or os.getenv('DB_SCHEMA', 'public')
-        self.max_unique_values = int(os.getenv('SCHEMA_MAX_UNIQUE_VALUES', '20'))  # Cardinality threshold
+        self.max_unique_values = int(os.getenv('SCHEMA_MAX_UNIQUE_VALUES', '3'))  # Reduced from 20 to 3 to save tokens
         
         # System/metadata tables to exclude from value enrichment
         # These are internal tables not meant for user queries

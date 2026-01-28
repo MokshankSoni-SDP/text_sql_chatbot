@@ -598,7 +598,7 @@ def process_user_question(user_question: str, schema: str, schema_name: str):
         # ═══════════════════════════════════════════════════════════
         with st.spinner("🔍 Understanding your request..."):
             success, intent_result, error = intent_classifier.decompose_query(
-                user_question=user_question,
+                user_query=user_question,
                 schema=schema,
                 chat_history=chat_history
             )

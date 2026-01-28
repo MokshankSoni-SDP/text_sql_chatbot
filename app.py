@@ -664,9 +664,9 @@ def process_user_question(user_question: str, schema: str, schema_name: str):
         if use_hybrid and has_embeddings:
             # ═══ HYBRID SEARCH PATH ═══
             st.markdown("**Search Mode**: 🧠 Semantic + Filters")
-            
-            with st.expander("🔍 Search Criteria", expanded=False):
-                st.write(f"**Semantic Query**: {intent_result.semantic_query}")
+            with st.expander("🔎 Search Criteria", expanded=True):
+                st.write(f"**Intent**: `{intent_result.intent_type}`")
+                st.write(f"**Semantic Query**: `{intent_result.semantic_query}`")
                 st.write(f"**SQL Filters**: `{intent_result.sql_filters}`")
             
             # Generate embedding for semantic query
@@ -681,7 +681,7 @@ def process_user_question(user_question: str, schema: str, schema_name: str):
                     sql_filters=intent_result.sql_filters,
                     query_embedding=query_embedding,
                     limit=10,
-                    similarity_threshold=0.3
+                    similarity_threshold=0.1  # Lowered for debugging
                 )
             
             if not success:

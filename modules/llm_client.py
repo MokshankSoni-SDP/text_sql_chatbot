@@ -414,6 +414,7 @@ Generate the corrected SQL query now:"""
                             "- Do NOT include the SQL query in your response. "
                             "- If there are no results, say so clearly. "
                             "- Provide clear, informative summaries of the data. "
+                            "- ALWAYS list specific details for the top 5-10 items found (Name, Price, etc.) as a bulleted list or table."
                             "- If results are broad, suggest ONE specific refinement (e.g. price/feature)."
                         )
                     },

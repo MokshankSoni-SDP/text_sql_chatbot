@@ -535,26 +535,31 @@ Generate the corrected SQL query now:"""
         if not recent_queries:
             return ""
         
+        # Only use the MOST RECENT query to save tokens
+        latest_query = recent_queries[-1:]
+        
         parts = ["=== RECENT QUERY CONTEXT (for reference) ==="]
         parts.append("The user previously queried the following data. You can reference this in your SQL if the current question refers to 'these', 'those', or 'previous results'.\n")
         
-        for i, query_data in enumerate(recent_queries, 1):
-            parts.append(f"Previous Query #{i}:")
+        for i, query_data in enumerate(latest_query, 1):
+            parts.append(f"Most Recent Query:")
             parts.append(f"  User asked: \"{query_data['question']}\"")
             parts.append(f"  Results returned ({len(query_data['results'])} rows):")
             
-            # Format first few rows
-            for row_idx, row in enumerate(query_data['results'][:5], 1):
+            # Format ONLY first 3 rows
+            for row_idx, row in enumerate(query_data['results'][:3], 1):
                 row_items = []
                 for col, val in zip(query_data['columns'], row):
-                    # Truncate long values
-                    val_str = str(val)[:50]
-                    row_items.append(f"{col}={val_str}")
+                    # Aggressively truncate long values
+                    val_str = str(val)[:30]
+                    # Skip empty/null values to save tokens
+                    if val_str and val_str.lower() != 'none':
+                        row_items.append(f"{col}={val_str}")
                 row_str = ", ".join(row_items)
                 parts.append(f"    Row {row_idx}: {row_str}")
             
-            if len(query_data['results']) > 5:
-                parts.append(f"    ... ({len(query_data['results']) - 5} more rows)")
+            if len(query_data['results']) > 3:
+                parts.append(f"    ... ({len(query_data['results']) - 3} more rows)")
             parts.append("")
         
         parts.append("=== END CONTEXT ===\n")

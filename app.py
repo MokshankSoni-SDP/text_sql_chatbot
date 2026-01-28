@@ -21,6 +21,42 @@ def load_custom_css():
             st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
     else:
         logger.warning(f"Custom CSS file not found at {css_file}")
+    
+    # Additional inline CSS for specific customizations
+    st.markdown("""
+        <style>
+        /* Additional custom styling */
+        .user-status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 8px;
+            animation: pulse 2s infinite;
+        }
+        .status-connected { background-color: #10b981; }
+        .status-disconnected { background-color: #ef4444; }
+        
+        /* Quick action button grid */
+        .quick-actions {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            margin-bottom: 1rem;
+        }
+        
+        /* Enhanced thinking state */
+        .thinking-indicator {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 1rem;
+            background: rgba(79, 70, 229, 0.05);
+            border-radius: 0.75rem;
+            border-left: 4px solid #4f46e5;
+        }
+        </style>
+    """, unsafe_allow_html=True)
 
 # Import custom modules
 from modules.project_manager import get_project_manager
@@ -143,7 +179,7 @@ def show_project_dashboard():
                 font-size: 3.5rem; 
                 font-weight: 700; 
                 margin-bottom: 0.8rem;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                background: linear-gradient(135deg, #4f46e5 0%, #14b8a6 100%);
                 -webkit-background-clip: text;
                 -webkit-text-fill-color: transparent;
                 background-clip: text;
@@ -153,7 +189,7 @@ def show_project_dashboard():
             </h1>
             <p style='
                 font-size: 1.25rem; 
-                color: #94a3b8; 
+                color: #6b7280; 
                 margin-bottom: 0.5rem;
                 animation: fadeIn 0.8s ease-out;
             '>
@@ -161,7 +197,7 @@ def show_project_dashboard():
             </p>
             <p style='
                 font-size: 0.95rem; 
-                color: #64748b;
+                color: #9ca3af;
                 animation: fadeIn 1s ease-out;
             '>
                 Ask anything about your data in plain English
@@ -258,12 +294,13 @@ def show_project_dashboard():
         if projects:
             # Display projects as modern styled cards
             for idx, project in enumerate(projects):
-                # Modern card with gradient border
+                # Glassmorphic project card
                 with st.container():
                     st.markdown(f"""
-                        <div style='
-                            background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
-                            border: 2px solid #475569;
+                        <div class='glass-card' style='
+                            background: rgba(255, 255, 255, 0.6);
+                            backdrop-filter: blur(10px);
+                            border: 1px solid rgba(79, 70, 229, 0.1);
                             border-radius: 1rem;
                             padding: 1.5rem;
                             margin-bottom: 1.25rem;
@@ -271,16 +308,16 @@ def show_project_dashboard():
                         '>
                             <div style='display: flex; align-items: center; margin-bottom: 0.75rem;'>
                                 <span style='font-size: 2rem; margin-right: 0.75rem;'>📁</span>
-                                <h3 style='margin: 0; color: #f1f5f9; font-size: 1.3rem;'>{project['display_name']}</h3>
+                                <h3 style='margin: 0; color: #111827; font-size: 1.3rem;'>{project['display_name']}</h3>
                             </div>
                             <div style='display: flex; gap: 1.5rem; margin-bottom: 1rem; flex-wrap: wrap;'>
-                                <span style='color: #94a3b8; font-size: 0.9rem;'>
-                                    <strong style='color: #cbd5e1;'>{project['table_count']}</strong> tables
+                                <span style='color: #6b7280; font-size: 0.9rem;'>
+                                    <strong style='color: #374151;'>{project['table_count']}</strong> tables
                                 </span>
-                                <span style='color: #94a3b8; font-size: 0.9rem;'>
-                                    <strong style='color: #cbd5e1;'>{project['total_rows']:,}</strong> rows
+                                <span style='color: #6b7280; font-size: 0.9rem;'>
+                                    <strong style='color: #374151;'>{project['total_rows']:,}</strong> rows
                                 </span>
-                                <span style='color: #64748b; font-size: 0.85rem;'>
+                                <span style='color: #9ca3af; font-size: 0.85rem;'>
                                     Created {project['created_at']}
                                 </span>
                             </div>
@@ -313,8 +350,8 @@ def show_project_dashboard():
                     # Show details if toggled
                     if st.session_state.get(f'show_details_{idx}', False):
                         st.markdown(f"""
-                        <div style='background: rgba(99, 102, 241, 0.1); padding: 1rem; border-radius: 0.5rem; margin-top: 0.5rem;'>
-                            <p style='color: #cbd5e1; margin: 0;'><strong>Schema:</strong> <code style='background: #0f172a; padding: 0.2rem 0.5rem; border-radius: 0.25rem;'>{project['schema_name']}</code></p>
+                        <div style='background: rgba(79, 70, 229, 0.08); padding: 1rem; border-radius: 0.5rem; margin-top: 0.5rem;'>
+                            <p style='color: #374151; margin: 0;'><strong>Schema:</strong> <code style='background: #f3f4f6; padding: 0.2rem 0.5rem; border-radius: 0.25rem; color: #4f46e5;'>{project['schema_name']}</code></p>
                         </div>
                         """, unsafe_allow_html=True)
                     
@@ -355,11 +392,12 @@ def show_project_dashboard():
     with col_right:
         st.markdown("#### ➕ Create New Project")
         
-        # Styled container
+        # Glassmorphic container
         st.markdown("""
-            <div style='
-                background: linear-gradient(135deg, rgba(236, 72, 153, 0.08) 0%, rgba(139, 92, 246, 0.08) 100%);
-                border: 1.5px solid #8b5cf6;
+            <div class='glass-card' style='
+                background: rgba(79, 70, 229, 0.05);
+                backdrop-filter: blur(10px);
+                border: 1.5px solid rgba(79, 70, 229, 0.2);
                 border-radius: 1rem;
                 padding: 1.5rem;
                 margin-bottom: 1rem;
@@ -540,7 +578,14 @@ def process_user_question(user_question: str, schema: str, schema_name: str):
         # ═══════════════════════════════════════════════════════════
         # STEP 1: INTENT CLASSIFICATION (The Router)
         # ═══════════════════════════════════════════════════════════
-        with st.spinner("🔍 Understanding your request..."):
+        # Enhanced thinking state with glassmorphism
+        with st.spinner():
+            st.markdown("""
+                <div class='thinking-indicator'>
+                    <span style='font-size: 1.5rem;'>🔍</span>
+                    <span style='color: #4f46e5; font-weight: 600;'>Understanding your request...</span>
+                </div>
+            """, unsafe_allow_html=True)
             intent = llm_client.classify_intent(user_question, chat_history)
         
         # Display intent badge
@@ -567,17 +612,24 @@ def process_user_question(user_question: str, schema: str, schema_name: str):
         # Route B: SQL PIPELINE (needs database)
         # Continue with existing SQL processing logic...
         
-        # Generate SQL query
-        with st.spinner("🤖 Generating SQL query..."):
+        # Generate SQL query with enhanced UI feedback
+        with st.spinner():
+            st.markdown("""
+                <div class='thinking-indicator'>
+                    <span style='font-size: 1.5rem;'>🤖</span>
+                    <span style='color: #4f46e5; font-weight: 600;'>Generating SQL query...</span>
+                </div>
+            """, unsafe_allow_html=True)
             sql_query = llm_client.text_to_sql(
                 user_question=user_question,
                 schema=schema,
                 chat_history=chat_history
             )
         
-        # Display generated SQL in expander
-        with st.expander("📝 Generated SQL Query", expanded=False):
+        # Display generated SQL in expander (collapsed by default for clean UX)
+        with st.expander("📝 View SQL Query", expanded=False):
             st.code(sql_query, language="sql")
+            st.caption("💡 Power users: This is the SQL query generated from your question")
         
         # Validate SQL
         is_valid, validation_error = validate_sql(sql_query)
@@ -592,8 +644,14 @@ def process_user_question(user_question: str, schema: str, schema_name: str):
             
             return error_msg
         
-        # Execute SQL (with schema context)
-        with st.spinner("💾 Executing query..."):
+        # Execute SQL (with schema context) and enhanced feedback
+        with st.spinner():
+            st.markdown("""
+                <div class='thinking-indicator'>
+                    <span style='font-size: 1.5rem;'>💾</span>
+                    <span style='color: #14b8a6; font-weight: 600;'>Executing query...</span>
+                </div>
+            """, unsafe_allow_html=True)
             success, results, column_names, exec_error = execute_sql(sql_query, schema_name=schema_name)
         
         if not success:
@@ -647,12 +705,61 @@ def process_user_question(user_question: str, schema: str, schema_name: str):
                 logger.error(f"Retry failed: {retry_error}")
                 st.error(f"Auto-correction failed: {retry_error}")
         
-        # Display results in expander
-        with st.expander("📊 Query Results", expanded=False):
+        # Display results in expander with enhanced data presentation
+        with st.expander("📊 Query Results", expanded=True):
             if results:
                 df = pd.DataFrame(results, columns=column_names)
-                st.dataframe(df, use_container_width=True)
-                st.caption(f"Rows returned: {len(results)}")
+                st.dataframe(
+                    df, 
+                    use_container_width=True,
+                    height=min(400, len(df) * 35 + 38)  # Dynamic height
+                )
+                st.caption(f"✅ {len(results)} row(s) returned")
+                
+                # Auto-chart generation for small datasets
+                if len(results) <= 10 and len(results) > 0:
+                    try:
+                        # Check if we have exactly 2 columns (good for bar chart)
+                        if len(column_names) == 2:
+                            st.markdown("#### 📊 Auto-Generated Visualization")
+                            # Assume first column is label, second is value
+                            import plotly.express as px
+                            fig = px.bar(
+                                df,
+                                x=column_names[0],
+                                y=column_names[1],
+                                labels={column_names[0]: column_names[0], column_names[1]: column_names[1]},
+                                color_discrete_sequence=['#4f46e5']
+                            )
+                            fig.update_layout(
+                                plot_bgcolor='rgba(0,0,0,0)',
+                                paper_bgcolor='rgba(0,0,0,0)',
+                                font_color='#374151'
+                            )
+                            st.plotly_chart(fig, use_container_width=True)
+                        # Check for time-series data
+                        elif any('date' in col.lower() or 'time' in col.lower() for col in column_names):
+                            st.markdown("#### 📈 Time Series Visualization")
+                            date_col = next((col for col in column_names if 'date' in col.lower() or 'time' in col.lower()), None)
+                            if date_col and len(column_names) == 2:
+                                value_col = [col for col in column_names if col != date_col][0]
+                                import plotly.express as px
+                                fig = px.line(
+                                    df,
+                                    x=date_col,
+                                    y=value_col,
+                                    markers=True,
+                                    color_discrete_sequence=['#14b8a6']
+                                )
+                                fig.update_layout(
+                                    plot_bgcolor='rgba(0,0,0,0)',
+                                    paper_bgcolor='rgba(0,0,0,0)',
+                                    font_color='#374151'
+                                )
+                                st.plotly_chart(fig, use_container_width=True)
+                    except Exception as chart_error:
+                        logger.debug(f"Could not auto-generate chart: {chart_error}")
+                        # Silent fail - charts are optional enhancement
             else:
                 st.info("No results found even after retry")
         
@@ -677,8 +784,14 @@ def process_user_question(user_question: str, schema: str, schema_name: str):
                     logger.error(f"Error generating data description: {desc_error}")
                     # Continue even if description fails
         
-        # Generate natural language answer
-        with st.spinner("✨ Generating answer..."):
+        # Generate natural language answer with enhanced feedback
+        with st.spinner():
+            st.markdown("""
+                <div class='thinking-indicator'>
+                    <span style='font-size: 1.5rem;'>✨</span>
+                    <span style='color: #4f46e5; font-weight: 600;'>Crafting your answer...</span>
+                </div>
+            """, unsafe_allow_html=True)
             answer = llm_client.result_to_english(
                 user_question=user_question,
                 sql_query=sql_query,
@@ -709,24 +822,87 @@ def process_user_question(user_question: str, schema: str, schema_name: str):
 def show_chat_interface():
     """Display chat interface for active project."""
     
-    # ═══ ENHANCED SIDEBAR ═══
+    # ═══ ENHANCED SIDEBAR WITH USER STATUS ═══
     with st.sidebar:
-        # Project info with modern styling
+        # User status at the top
+        user_status = "connected" if st.session_state.user_id else "disconnected"
+        status_icon = "🟢" if user_status == "connected" else "🔴"
+        status_text = "Connected" if user_status == "connected" else "Disconnected"
+        
         st.markdown(f"""
-            <div style='
-                background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            <div class='glass-card' style='
+                background: rgba(255, 255, 255, 0.6);
+                backdrop-filter: blur(10px);
                 padding: 1rem;
                 border-radius: 0.75rem;
                 margin-bottom: 1rem;
+                border: 1px solid rgba(79, 70, 229, 0.1);
             '>
-                <h3 style='margin: 0; color: white; font-size: 1.1rem;'>
-                    📁 {st.session_state.current_project_name}
-                </h3>
-                <p style='margin: 0.5rem 0 0 0; color: rgba(255, 255, 255, 0.9); font-size: 0.85rem;'>
-                    Schema: <code style='background: rgba(0,0,0,0.2); padding: 0.2rem 0.4rem; border-radius: 0.25rem;'>{st.session_state.active_schema}</code>
+                <div style='display: flex; align-items: center; margin-bottom: 0.5rem;'>
+                    <span class='user-status-indicator status-{user_status}'></span>
+                    <span style='font-size: 0.85rem; color: #6b7280; font-weight: 600;'>{status_icon} {status_text}</span>
+                </div>
+                <p style='margin: 0; color: #111827; font-size: 0.9rem;'>
+                    <strong>User:</strong> {st.session_state.user_id}
                 </p>
             </div>
         """, unsafe_allow_html=True)
+        
+        # Project info with modern styling
+        st.markdown(f"""
+            <div class='glass-card' style='
+                background: linear-gradient(135deg, rgba(79, 70, 229, 0.1) 0%, rgba(20, 184, 166, 0.1) 100%);
+                backdrop-filter: blur(10px);
+                padding: 1rem;
+                border-radius: 0.75rem;
+                margin-bottom: 1rem;
+                border: 1px solid rgba(79, 70, 229, 0.2);
+            '>
+                <h3 style='margin: 0; color: #111827; font-size: 1.1rem;'>
+                    📁 {st.session_state.current_project_name}
+                </h3>
+                <p style='margin: 0.5rem 0 0 0; color: #6b7280; font-size: 0.85rem;'>
+                    Schema: <code style='background: rgba(255, 255, 255, 0.6); padding: 0.2rem 0.4rem; border-radius: 0.25rem; color: #4f46e5;'>{st.session_state.active_schema}</code>
+                </p>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        # ═══ PROJECT SWITCHER ═══
+        st.markdown("#### 🔄 Project Switcher")
+        try:
+            project_manager = get_project_manager()
+            all_projects = project_manager.list_user_projects(st.session_state.user_id)
+            
+            if len(all_projects) > 1:
+                project_names = [p['display_name'] for p in all_projects]
+                current_index = next(
+                    (i for i, p in enumerate(all_projects) if p['schema_name'] == st.session_state.active_schema),
+                    0
+                )
+                
+                selected_project = st.selectbox(
+                    "Switch to:",
+                    project_names,
+                    index=current_index,
+                    help="Switch between your projects"
+                )
+                
+                # Check if user selected a different project
+                selected_idx = project_names.index(selected_project)
+                if all_projects[selected_idx]['schema_name'] != st.session_state.active_schema:
+                    if st.button("🚀 Switch Project", use_container_width=True, type="primary"):
+                        st.session_state.active_schema = all_projects[selected_idx]['schema_name']
+                        st.session_state.current_project_name = all_projects[selected_idx]['display_name']
+                        st.session_state.messages = []
+                        st.session_state.schema_text = None
+                        st.session_state.db_connected = False
+                        st.rerun()
+            else:
+                st.info("Only one project available")
+        except Exception as e:
+            st.warning(f"Could not load projects: {e}")
+        
+        st.divider()
         
         if st.button("← Back to Projects", use_container_width=True):
             st.session_state.active_schema = None
@@ -821,31 +997,87 @@ def show_chat_interface():
             <h1 style='
                 font-size: 2.5rem;
                 margin-bottom: 0.5rem;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                background: linear-gradient(135deg, #4f46e5 0%, #14b8a6 100%);
                 -webkit-background-clip: text;
                 -webkit-text-fill-color: transparent;
             '>
                 💬 Chat with Your Data
             </h1>
-            <p style='color: #94a3b8; font-size: 1.1rem;'>
-                Ask questions about <strong>{st.session_state.current_project_name}</strong> in plain English
+            <p style='color: #6b7280; font-size: 1.1rem;'>
+                Ask questions about <strong style='color: #4f46e5;'>{st.session_state.current_project_name}</strong> in plain English
             </p>
         </div>
     """, unsafe_allow_html=True)
     
+    # ═══ QUICK ACTION BUTTONS ═══
+    if st.session_state.db_connected and st.session_state.schema_text:
+        st.markdown("### 🎯 Quick Actions")
+        
+        # Extract table names from schema for suggestions
+        try:
+            import re
+            table_matches = re.findall(r'Table: (\w+)', st.session_state.schema_text)
+            sample_table = table_matches[0] if table_matches else "your_table"
+        except:
+            sample_table = "your_table"
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            if st.button("📊 Show top 5 rows", use_container_width=True, help="Quick peek at data"):
+                st.session_state.quick_query = f"Show me the first 5 rows from {sample_table}"
+                st.rerun()
+        
+        with col2:
+            if st.button("🔢 Count records", use_container_width=True, help="Total row count"):
+                st.session_state.quick_query = f"How many total records are in {sample_table}?"
+                st.rerun()
+        
+        with col3:
+            if st.button("📋 Column names", use_container_width=True, help="See all columns"):
+                st.session_state.quick_query = "What are all the column names in the database?"
+                st.rerun()
+        
+        with col4:
+            if st.button("📈 Summary stats", use_container_width=True, help="Basic statistics"):
+                st.session_state.quick_query = f"Give me summary statistics for {sample_table}"
+                st.rerun()
+        
+        st.divider()
+    
     # Check connection status
     if not st.session_state.db_connected:
-        st.warning("⚠️ Please load the database schema using the sidebar before asking questions.")
-        st.info("👈 Click 'Load Schema' in the sidebar to get started.")
+        st.markdown("""
+            <div class='glass-card' style='
+                background: rgba(245, 158, 11, 0.1);
+                backdrop-filter: blur(10px);
+                padding: 1.5rem;
+                border-radius: 1rem;
+                border-left: 4px solid #f59e0b;
+                text-align: center;
+            '>
+                <h3 style='color: #d97706; margin-bottom: 0.5rem;'>⚠️ Schema Not Loaded</h3>
+                <p style='color: #92400e; margin: 0;'>Please load the database schema using the sidebar before asking questions.</p>
+                <p style='color: #92400e; margin-top: 0.5rem;'>👈 Click <strong>'Load Schema'</strong> in the sidebar to get started.</p>
+            </div>
+        """, unsafe_allow_html=True)
         return
     
-    # Display chat messages
+    # Display chat messages with avatars
     for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
+        avatar = "👤" if message["role"] == "user" else "🤖"
+        with st.chat_message(message["role"], avatar=avatar):
             st.markdown(message["content"])
     
-    # Chat input
-    if prompt := st.chat_input("Ask a question about your database..."):
+    # Chat input (fixed at bottom with CSS)
+    # Check for quick query
+    if 'quick_query' in st.session_state and st.session_state.quick_query:
+        prompt = st.session_state.quick_query
+        st.session_state.quick_query = None
+    else:
+        prompt = st.chat_input("✨ Ask a question about your database...")
+    
+    if prompt:
         # Split into multiple questions if present
         questions = split_questions(prompt)
         

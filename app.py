@@ -719,9 +719,8 @@ def process_user_question(user_question: str, schema: str, schema_name: str):
                 answer = llm_client.result_to_english(
                     user_question=user_question,
                     sql_query=f"Hybrid search: {intent_result.semantic_query}",
-                    results=results[:5],
-                    column_names=[col for col in column_names if col not in ['embedding', 'similarity_score']],
-                    chat_history=chat_history
+                    sql_result=results[:5],
+                    column_names=[col for col in column_names if col not in ['embedding', 'similarity_score']]
                 )
             
             # Store in chat history
@@ -808,9 +807,8 @@ def process_user_question(user_question: str, schema: str, schema_name: str):
                 answer = llm_client.result_to_english(
                     user_question=user_question,
                     sql_query=sql_query,
-                    results=results,
-                    column_names=column_names,
-                    chat_history=chat_history
+                    sql_result=results,
+                    column_names=column_names
                 )
             
             # Store in chat history

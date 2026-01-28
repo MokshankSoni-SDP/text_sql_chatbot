@@ -4,7 +4,7 @@ Handles clarification, fallbacks, and out-of-scope queries.
 """
 
 import logging
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Tuple
 from .intent_classifier import IntentResult
 
 logger = logging.getLogger(__name__)

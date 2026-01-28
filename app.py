@@ -647,8 +647,8 @@ def process_user_question(user_question: str, schema: str, schema_name: str):
         
         # Get table name from schema (simple extraction)
         import re
-        table_matches = re.findall(r'Table: (\w+)', schema)
-        table_name = table_matches[0] if table_matches else None
+        table_matches = re.findall(r'Table: ([^\n\r]+)', schema)
+        table_name = table_matches[0].strip() if table_matches else None
         
         if not table_name:
             st.error("❌ Could not determine table name from schema")

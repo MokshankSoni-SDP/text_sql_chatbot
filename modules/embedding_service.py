@@ -76,27 +76,39 @@ class EmbeddingService:
             List[List[float]]: List of embedding vectors
         """
         if not texts:
+            logger.warning("⚠️ Empty text list provided for batch embedding")
             return []
         
         try:
-            # Filter out empty texts  but maintain indices
+            logger.debug(f"Processing {len(texts)} texts in batches of {batch_size}")
+            
+            # Filter out empty texts but maintain indices
             valid_indices = []
             valid_texts = []
+            empty_count = 0
             
             for i, text in enumerate(texts):
                 if text and text.strip():
                     valid_indices.append(i)
                     valid_texts.append(text)
+                else:
+                    empty_count += 1
+            
+            if empty_count > 0:
+                logger.debug(f"Found {empty_count} empty texts, will use zero vectors")
             
             # Generate embeddings for valid texts
             if valid_texts:
+                logger.debug(f"Encoding {len(valid_texts)} valid texts...")
                 embeddings = self._model.encode(
                     valid_texts,
                     batch_size=batch_size,
                     show_progress_bar=len(valid_texts) > 100,
                     convert_to_numpy=True
                 )
+                logger.debug(f"✅ Successfully encoded {len(valid_texts)} texts")
             else:
+                logger.warning("⚠️ No valid texts to encode, returning zero vectors")
                 embeddings = []
             
             # Reconstruct full list with zero vectors for empty texts
@@ -111,11 +123,14 @@ class EmbeddingService:
                 else:
                     result.append(zero_vector)
             
+            logger.debug(f"✅ Batch complete: {len(result)} embeddings generated")
             return result
         
         except Exception as e:
-            logger.error(f"Error generating batch embeddings: {e}")
+            logger.error(f"❌ CRITICAL ERROR in batch embedding generation: {e}", exc_info=True)
+            logger.error(f"Error details: texts count={len(texts)}, batch_size={batch_size}")
             # Return zero vectors on failure
+            logger.warning("⚠️ Returning zero vectors due to error")
             return [[0.0] * self.get_embedding_dim() for _ in texts]
     
     def get_embedding_dim(self) -> int:

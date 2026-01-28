@@ -218,24 +218,73 @@ class DataIngestor:
             
             # Generate embeddings if text columns exist
             if text_columns:
-                logger.info(f"🧠 Generating embeddings for {len(df)} rows with {len(text_columns)} text columns...")
-                embedding_service = get_embedding_service()
+                import time
+                import streamlit as st
                 
-                # Build combined context for each row
-                logger.info("Building text contexts...")
-                contexts = []
-                for idx, row in df.iterrows():
-                    context = self._build_embedding_context(row, text_columns)
-                    contexts.append(context)
+                start_time = time.time()
+                logger.info(f"🧠 Starting embedding generation for {len(df)} rows with {len(text_columns)} text columns: {text_columns}")
                 
-                # Generate batch embeddings with progress tracking
-                logger.info(f"Generating {len(contexts)} embeddings in batches of 32...")
-                embeddings = embedding_service.generate_batch_embeddings(contexts, batch_size=32)
-                
-                # Add embedding column to dataframe
-                df['embedding'] = embeddings
-                
-                logger.info(f"✅ Generated {len(embeddings)} embeddings ({embedding_service.get_embedding_dim()}-dim)")
+                try:
+                    embedding_service = get_embedding_service()
+                    
+                    # Build combined context for each row (OPTIMIZED - vectorized apply)
+                    logger.info("📝 Building text contexts using vectorized operations...")
+                    context_start = time.time()
+                    
+                    # Use apply() which is faster than iterrows()
+                    contexts = df.apply(
+                        lambda row: self._build_embedding_context(row, text_columns),
+                        axis=1
+                    ).tolist()
+                    
+                    context_time = time.time() - context_start
+                    logger.info(f"✅ Built {len(contexts)} contexts in {context_time:.2f}s")
+                    
+                    # Generate batch embeddings with Streamlit progress tracking
+                    logger.info(f"🔄 Generating {len(contexts)} embeddings in batches of 32...")
+                    embedding_start = time.time()
+                    
+                    # Show progress bar in Streamlit
+                    progress_bar = st.progress(0)
+                    status_text = st.empty()
+                    status_text.text(f"Generating embeddings: 0/{len(contexts)}...")
+                    
+                    # Process in batches with progress updates
+                    embeddings = []
+                    batch_size = 32
+                    total_batches = (len(contexts) + batch_size - 1) // batch_size
+                    
+                    for i in range(0, len(contexts), batch_size):
+                        batch = contexts[i:i + batch_size]
+                        batch_embeddings = embedding_service.generate_batch_embeddings(batch, batch_size=batch_size)
+                        embeddings.extend(batch_embeddings)
+                        
+                        # Update progress
+                        progress = min((i + batch_size) / len(contexts), 1.0)
+                        progress_bar.progress(progress)
+                        status_text.text(f"Generating embeddings: {min(i + batch_size, len(contexts))}/{len(contexts)}...")
+                        
+                        logger.debug(f"Processed batch {(i // batch_size) + 1}/{total_batches}")
+                    
+                    progress_bar.empty()
+                    status_text.empty()
+                    
+                    embedding_time = time.time() - embedding_start
+                    logger.info(f"✅ Generated {len(embeddings)} embeddings in {embedding_time:.2f}s ({len(embeddings)/embedding_time:.1f} embeddings/sec)")
+                    
+                    # Add embedding column to dataframe
+                    df['embedding'] = embeddings
+                    
+                    total_time = time.time() - start_time
+                    logger.info(f"🎉 Total embedding generation time: {total_time:.2f}s ({embedding_service.get_embedding_dim()}-dim vectors)")
+                    
+                except Exception as e:
+                    logger.error(f"❌ CRITICAL ERROR during embedding generation: {e}", exc_info=True)
+                    st.error(f"Error generating embeddings: {e}")
+                    # Continue without embeddings rather than failing completely
+                    logger.warning("⚠️ Proceeding without embeddings - semantic search will not be available")
+                    if 'embedding' in df.columns:
+                        df.drop('embedding', axis=1, inplace=True)
             else:
                 logger.info("No suitable text columns found, skipping embedding generation")
             

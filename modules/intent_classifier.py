@@ -123,9 +123,12 @@ Output ONLY valid JSON with this EXACT structure:
 CRITICAL RULES:
 1. intent_type MUST be exactly one of: product_search, recommendation, comparison, explanation, out_of_scope
 2. sql_filters MUST be valid SQL for a WHERE clause. Use column names from schema. Use 'TRUE' if no specific filters needed.
-3. semantic_query should capture the semantic/subjective aspects (comfort, style, quality) in natural language. NO SQL syntax here.
-4. requires_clarification should be true ONLY if the query is too vague/ambiguous to process.
-5. For follow-up queries like "cheaper ones" or "show me more", use chat history to infer context.
+3. semantic_query should capture the semantic/subjective aspects (comfort, style, quality, "best", "popular") in natural language. NO SQL syntax here.
+4. requires_clarification should be true ONLY if the system cannot determine the product domain OR intent type.
+   - ❌ DO NOT set to true for broad queries like "best shoes" or "nike products" -> USE SEMANTIC SEARCH instead.
+   - ❌ DO NOT set to true for missing filters (price, color, etc.) -> Just search for all.
+   - ✅ ONLY set to true for vague non-product queries like "hello", "test", "something precise".
+5. For follow-up queries like "cheaper ones", use chat history to infer context.
 
 EXAMPLES:
 
@@ -153,12 +156,12 @@ Query: "What's the weather?"
   "requires_clarification": false
 }}
 
-Query: "Show me something nice"
+Query: "give me best nike shoes"
 {{
   "intent_type": "product_search",
-  "sql_filters": "TRUE",
-  "semantic_query": "",
-  "requires_clarification": true
+  "sql_filters": "brand = 'Nike'",
+  "semantic_query": "highest rated best nike shoes",
+  "requires_clarification": false
 }}
 
 NOW ANALYZE THE USER QUERY AND RESPOND WITH JSON ONLY."""

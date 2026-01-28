@@ -675,13 +675,14 @@ def process_user_question(user_question: str, schema: str, schema_name: str):
             
             # Execute hybrid search
             with st.spinner("🔎 Searching database..."):
+                # DEBUG: Force threshold 0.0 to see what the scores actually are
                 success, results, column_names, error = hybrid_search.execute_hybrid_search(
                     schema_name=schema_name,
                     table_name=table_name,
                     sql_filters=intent_result.sql_filters,
                     query_embedding=query_embedding,
                     limit=10,
-                    similarity_threshold=0.1  # Lowered for debugging
+                    similarity_threshold=0.0
                 )
             
             if not success:

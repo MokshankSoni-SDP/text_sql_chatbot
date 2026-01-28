@@ -14,6 +14,7 @@ from sqlalchemy import types as sqltypes
 import os
 from dotenv import load_dotenv
 from .db_connection import get_db_instance
+from .embedding_service import get_embedding_service
 
 # Load environment variables
 load_dotenv()
@@ -199,6 +200,7 @@ class DataIngestor:
     ) -> Tuple[bool, str]:
         """
         Create a table from a pandas DataFrame using SQLAlchemy.
+        NOW WITH EMBEDDING GENERATION for hybrid search.
         
         Args:
             df: Pandas DataFrame
@@ -209,25 +211,166 @@ class DataIngestor:
             Tuple[bool, str]: (success, message)
         """
         try:
+            # Detect text-heavy columns for embeddings
+            text_columns = self._detect_text_columns(df)
+            
+            logger.info(f"Detected {len(text_columns)} text columns for embeddings: {text_columns}")
+            
+            # Generate embeddings if text columns exist
+            if text_columns:
+                logger.info("Generating embeddings for semantic search...")
+                embedding_service = get_embedding_service()
+                
+                # Build combined context for each row
+                contexts = []
+                for idx, row in df.iterrows():
+                    context = self._build_embedding_context(row, text_columns)
+                    contexts.append(context)
+                
+                # Generate batch embeddings
+                embeddings = embedding_service.generate_batch_embeddings(contexts, batch_size=32)
+                
+                # Add embedding column to dataframe
+                df['embedding'] = embeddings
+                
+                logger.info(f"✅ Generated {len(embeddings)} embeddings ({embedding_service.get_embedding_dim()}-dim)")
+            else:
+                logger.info("No suitable text columns found, skipping embedding generation")
+            
             # Use pandas to_sql with SQLAlchemy engine
-            # This automatically creates the table with inferred types
-            df.to_sql(
+            df_to_save = df.copy()
+            
+            # Convert embedding lists to strings for PostgreSQL vector type
+            if 'embedding' in df_to_save.columns:
+                df_to_save['embedding'] = df_to_save['embedding'].apply(
+                    lambda x: '[' + ','.join(map(str, x)) + ']' if isinstance(x, list) else None
+                )
+            
+            # Save to database
+            df_to_save.to_sql(
                 name=table_name,
                 con=self.engine,
                 schema=schema_name,
                 if_exists='replace',  # Replace if exists
                 index=False,  # Don't create index column
                 method='multi',  # Use multi-row INSERT for better performance
-                chunksize=1000
+                chunksize=1000,
+                dtype={'embedding': Text}  # Store as text first
             )
             
+            # Convert embedding column to vector type if it exists
+            if 'embedding' in df.columns:
+                self._convert_embedding_to_vector(schema_name, table_name)
+            
             logger.info(f"✅ Created table {schema_name}.{table_name} with {len(df)} rows")
-            return True, f"Table created successfully"
+            
+            if text_columns:
+                return True, f"Table created successfully with {len(embeddings)} embeddings for semantic search"
+            else:
+                return True, f"Table created successfully"
             
         except Exception as e:
             error_msg = f"Error creating table: {str(e)}"
             logger.error(error_msg)
             return False, error_msg
+    
+    def _detect_text_columns(self, df: pd.DataFrame) -> List[str]:
+        """
+        Detect text-heavy columns suitable for embedding generation.
+        
+        Args:
+            df: Pandas DataFrame
+            
+        Returns:
+            List[str]: List of text column names
+        """
+        text_columns = []
+        
+        for col in df.columns:
+            # Check if column is object/string type
+            if df[col].dtype == 'object':
+                # Calculate average text length
+                avg_length = df[col].astype(str).str.len().mean()
+                
+                # Include if average length > 10 characters
+                if avg_length > 10:
+                    text_columns.append(col)
+                    logger.debug(f"Column '{col}' selected (avg length: {avg_length:.1f})")
+        
+        return text_columns
+    
+    def _build_embedding_context(self, row: pd.Series, text_columns: List[str]) -> str:
+        """
+        Build combined text context from multiple columns for embedding.
+        
+        Args:
+            row: DataFrame row
+            text_columns: List of text column names
+            
+        Returns:
+            str: Combined context string
+        """
+        parts = []
+        
+        for col in text_columns:
+            value = row.get(col)
+            
+            if pd.notna(value) and str(value).strip():
+                # Format: "Column Name: value"
+                formatted_col = col.replace('_', ' ').title()
+                parts.append(f"{formatted_col}: {value}")
+        
+        # Combine with periods
+        context = ". ".join(parts)
+        
+        return context if context else "No description available"
+    
+    def _convert_embedding_to_vector(self, schema_name: str, table_name: str):
+        """
+        Convert embedding column from text to vector type.
+        
+        Args:
+            schema_name: Schema name
+            table_name: Table name
+        """
+        try:
+            conn = self.db.get_connection()
+            cursor = conn.cursor()
+            
+            # Alter column to vector type
+            alter_query = f"""
+                ALTER TABLE {schema_name}.{table_name}
+                ALTER COLUMN embedding TYPE vector(384)
+                USING embedding::vector;
+            """
+            
+            cursor.execute(alter_query)
+            conn.commit()
+            cursor.close()
+            
+            logger.info(f"✅ Converted embedding column to vector(384) type")
+            
+            # Create index for faster similarity search
+            try:
+                index_query = f"""
+                    CREATE INDEX IF NOT EXISTS {table_name}_embedding_idx
+                    ON {schema_name}.{table_name}
+                    USING ivfflat (embedding vector_cosine_ops)
+                    WITH (lists = 100);
+                """
+                
+                cursor = conn.cursor()
+                cursor.execute(index_query)
+                conn.commit()
+                cursor.close()
+                
+                logger.info(f"✅ Created vector index for faster search")
+            except Exception as idx_error:
+                logger.warning(f"Could not create vector index: {idx_error}")
+            
+        except Exception as e:
+            logger.error(f"Error converting to vector type: {e}")
+            # Don't fail the entire ingestion if vector conversion fails
     
     def sanitize_column_name(self, col: str) -> str:
         """

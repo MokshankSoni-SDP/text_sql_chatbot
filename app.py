@@ -657,6 +657,29 @@ def process_user_question(user_question: str, schema: str, schema_name: str):
         # Check if table has embeddings
         has_embeddings = hybrid_search.check_vector_column_exists(schema_name, table_name)
         
+        # 🛠️ DEBUG DEBUG DEBUG
+        with st.expander("🛠️ DIAGNOSTIC INFO (Please check this)", expanded=True):
+            st.write(f"**Schema:** `{schema_name}`")
+            st.write(f"**Extracted Table Name:** `{table_name}`")
+            st.write(f"**Vector Check Result:** `{has_embeddings}`")
+            
+            # List actual columns found in DB
+            try:
+                db = hybrid_search.db
+                conn = db.get_connection()
+                cur = conn.cursor()
+                cur.execute(f"SELECT column_name FROM information_schema.columns WHERE table_schema = '{schema_name}' AND lower(table_name) = '{table_name.lower()}'")
+                found_cols = [row[0] for row in cur.fetchall()]
+                cur.close()
+                st.write(f"**Actual Columns found in DB:** {found_cols}")
+                if 'embedding' not in found_cols:
+                    st.error("⚠️ 'embedding' column NOT found in the list above!")
+                else:
+                    st.success("✅ 'embedding' column IS present. Logic mismatch?")
+            except Exception as e:
+                st.error(f"Debug query failed: {e}")
+        # 🛠️ END DEBUG
+        
         if use_hybrid and has_embeddings:
             # ═══ HYBRID SEARCH PATH ═══
             st.markdown("**Search Mode**: 🧠 Semantic + Filters")

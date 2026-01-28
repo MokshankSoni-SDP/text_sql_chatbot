@@ -181,7 +181,7 @@ class HybridSearchEngine:
                 SELECT column_name 
                 FROM information_schema.columns 
                 WHERE table_schema = %s 
-                  AND table_name = %s 
+                  AND lower(table_name) = lower(%s) 
                   AND column_name = 'embedding';
             """, (schema_name, table_name))
             

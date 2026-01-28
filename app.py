@@ -845,8 +845,8 @@ def show_chat_interface():
         
         # Project info with modern styling
         st.markdown(f"""
-            <div class='glass-card' style='
-                background: linear-gradient(135deg, rgba(79, 70, 229, 0.1) 0%, rgba(20, 184, 166, 0.1) 100%);
+            <div style='
+                background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(249, 250, 251, 0.95) 100%);
                 backdrop-filter: blur(10px);
                 padding: 1rem;
                 border-radius: 0.75rem;
@@ -934,40 +934,59 @@ def show_chat_interface():
         
         st.divider()
         
-        # Database connection
-        st.markdown("#### ⚙️ Configuration")
+        # ═══ SCHEMA EDITOR (Moved to top for better visibility) ═══
+        st.markdown("#### 📋 Schema Editor")
         
-        if st.button("🔌 Load Schema", use_container_width=True):
-            with st.spinner("Loading database schema..."):
+        # Auto-load schema if not loaded
+        if not st.session_state.db_connected and st.session_state.active_schema:
+            with st.spinner("🔄 Auto-loading schema..."):
                 success, result = load_schema(st.session_state.active_schema)
                 if success:
-                    st.success("✅ Schema loaded!")
+                    st.success("✅ Schema auto-loaded successfully!")
+                    st.rerun()
                 else:
-                    st.error(f"❌ Failed: {result}")
+                    st.error(f"❌ Auto-load failed: {result}")
         
+        # Show schema status
         if st.session_state.db_connected:
             st.success("🟢 Schema Loaded")
         else:
             st.warning("🔴 Schema Not Loaded")
         
-        st.divider()
-        
-        # Schema editor
-        st.markdown("#### 📋 Schema")
-        
+        # Schema editor area
         if st.session_state.schema_text:
             edited_schema = st.text_area(
                 "Edit schema if needed:",
                 value=st.session_state.schema_text,
-                height=250,
-                help="Manually edit the schema for additional context"
+                height=300,
+                help="✏️ Manually edit the schema for additional context"
             )
             
-            if st.button("💾 Update Schema", use_container_width=True):
+            if st.button("💾 Update Schema", use_container_width=True, type="primary"):
                 st.session_state.schema_text = edited_schema
-                st.success("Schema updated!")
+                st.success("✅ Schema updated!")
         else:
-            st.info("Load schema to view/edit")
+            st.info("ℹ️ Schema will auto-load when project is opened")
+        
+        st.divider()
+        
+        # Project Analytics (moved after schema)
+        st.markdown("#### 📊 Analytics")
+        
+        try:
+            project_manager = get_project_manager()
+            metadata = project_manager.get_project_metadata(st.session_state.active_schema)
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                chat_manager = get_chat_history_manager(schema_name=st.session_state.active_schema)
+                all_messages = chat_manager.get_session_history(st.session_state.session_id)
+                user_messages = [m for m in all_messages if m['role'] == 'user']
+                st.metric("Queries", len(user_messages))
+            with col2:
+                st.metric("Schema", st.session_state.active_schema[:10] + "...")
+        except Exception as e:
+            st.warning(f"Could not load analytics: {e}")
         
         st.divider()
         
@@ -988,7 +1007,7 @@ def show_chat_interface():
     
     # ═══ MAIN CHAT INTERFACE ═══
     # Modern header
-    st.markdown("""
+    st.markdown(f"""
         <div style='margin-bottom: 1.5rem;'>
             <h1 style='
                 font-size: 2.5rem;
@@ -1005,42 +1024,7 @@ def show_chat_interface():
         </div>
     """, unsafe_allow_html=True)
     
-    # ═══ QUICK ACTION BUTTONS ═══
-    if st.session_state.db_connected and st.session_state.schema_text:
-        st.markdown("### 🎯 Quick Actions")
-        
-        # Extract table names from schema for suggestions
-        try:
-            import re
-            table_matches = re.findall(r'Table: (\w+)', st.session_state.schema_text)
-            sample_table = table_matches[0] if table_matches else "your_table"
-        except:
-            sample_table = "your_table"
-        
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            if st.button("📊 Show top 5 rows", use_container_width=True, help="Quick peek at data"):
-                st.session_state.quick_query = f"Show me the first 5 rows from {sample_table}"
-                st.rerun()
-        
-        with col2:
-            if st.button("🔢 Count records", use_container_width=True, help="Total row count"):
-                st.session_state.quick_query = f"How many total records are in {sample_table}?"
-                st.rerun()
-        
-        with col3:
-            if st.button("📋 Column names", use_container_width=True, help="See all columns"):
-                st.session_state.quick_query = "What are all the column names in the database?"
-                st.rerun()
-        
-        with col4:
-            if st.button("📈 Summary stats", use_container_width=True, help="Basic statistics"):
-                st.session_state.quick_query = f"Give me summary statistics for {sample_table}"
-                st.rerun()
-        
-        st.divider()
-    
+
     # Check connection status
     if not st.session_state.db_connected:
         st.markdown("""

@@ -41,7 +41,7 @@ class GroqLLMClient:
             str: Summarized text (or original if already short)
         """
         # If text is already short, return as is
-        if len(text) <= 300:
+        if len(text) <= 150:
             return text
         
         try:

@@ -113,83 +113,99 @@ class ProjectManager:
             self.db.execute_query(create_query, fetch=False)
             logger.info(f"✅ Created/Verified Schema: {schema_name}")
 
-            # 3. Handle Data Ingestion (if file provided)
+            # 3. Create Metadata Table
+            self._create_metadata_table(schema_name)
+
+            # 4. Handle Data Ingestion (if file provided)
             if data_file is not None:
-                # Determine Table Name (Main Table)
-                table_name = "main_data"
+                self.add_file_to_project(schema_name, data_file)
                 
-                # Load DataFrame
-                df = None
-                if isinstance(data_file, pd.DataFrame):
-                    df = data_file
-                elif isinstance(data_file, str):
-                    if data_file.endswith('.csv'):
-                        df = pd.read_csv(data_file)
-                    elif data_file.endswith(('.xls', '.xlsx')):
-                        df = pd.read_excel(data_file)
-                    else:
-                        raise ValueError("Unsupported file format. Use CSV or Excel.")
-                
-                if df is not None:
-                    logger.info(f"🚀 Starting Batch Ingestion for {len(df)} rows into {schema_name}.{table_name}")
-                    
-                    # Sanitize Columns
-                    df.columns = [self.sanitize_name(c) for c in df.columns]
-                    
-                    # Get SQLAlchemy Connection
-                    conn = self.engine.connect()
-                    
-                    # 4. Commit Table Structure (Empty)
-                    # Use 'replace' to create table definition, but write 0 rows first
-                    df.head(0).to_sql(
-                        table_name, 
-                        conn, 
-                        schema=schema_name, 
-                        if_exists='replace', 
-                        index=False
-                    )
-                    logger.info("✅ Created Table Structure")
-                    
-                    # 5. Batch Insert Loop
-                    chunk_size = 5000  # Process 5k rows at a time
-                    total_chunks = (len(df) // chunk_size) + 1
-                    
-                    for i in range(0, len(df), chunk_size):
-                        chunk = df.iloc[i : i + chunk_size]
-                        
-                        try:
-                            chunk.to_sql(
-                                table_name,
-                                conn,
-                                schema=schema_name,
-                                if_exists='append',
-                                index=False,
-                                method='multi',  # Optimize for Postgres
-                                chunksize=1000   # Internal batch size for method='multi'
-                            )
-                            logger.info(f"✅ Processed chunk {i//chunk_size + 1}/{total_chunks} ({len(chunk)} rows)")
-                            conn.commit() # Explicit Insert Commit
-                            
-                        except Exception as chunk_e:
-                            logger.error(f"❌ Failed to insert chunk {i}: {chunk_e}")
-                            conn.rollback()
-                            raise chunk_e
-
-                    logger.info(f"🎉 Successfully ingested {len(df)} rows.")
-
             return schema_name
-            
-        except ValueError as e:
-            logger.error(f"Validation Error: {e}")
-            raise
+
         except Exception as e:
-            logger.error(f"Critical Error in create_project: {e}")
-            if conn:
-                conn.rollback()
+            logger.error(f"Error creating project: {e}")
             raise
-        finally:
-            if conn:
-                conn.close()
+
+    def _create_metadata_table(self, schema_name: str):
+        """Create table to track project files."""
+        query = f"""
+            CREATE TABLE IF NOT EXISTS {schema_name}.project_tables (
+                id SERIAL PRIMARY KEY,
+                table_name TEXT NOT NULL,
+                file_name TEXT NOT NULL,
+                upload_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                row_count INTEGER
+            );
+        """
+        self.db.execute_query(query, fetch=False)
+
+    def add_file_to_project(self, schema_name: str, data_file: Union[str, pd.DataFrame, any]) -> str:
+        """
+        Add a new file/table to an existing project.
+        
+        Args:
+            schema_name: Target schema
+            data_file: File path, DataFrame, or UploadedFile
+            
+        Returns:
+            str: Name of the created table
+        """
+        from .data_ingestion import DataIngestor
+        ingestor = DataIngestor()
+        
+        # Determine file name and load df
+        file_name = "unknown"
+        df = None
+        
+        if isinstance(data_file, str):
+            file_name = os.path.basename(data_file)
+            if data_file.endswith('.csv'):
+                df = pd.read_csv(data_file)
+            elif data_file.endswith(('.xls', '.xlsx')):
+                df = pd.read_excel(data_file)
+        elif isinstance(data_file, pd.DataFrame):
+            file_name = "dataframe_upload"
+            df = data_file
+        elif hasattr(data_file, 'name'): # Streamlit UploadedFile
+            file_name = data_file.name
+            if file_name.endswith('.csv'):
+                df = pd.read_csv(data_file)
+            else:
+                df = pd.read_excel(data_file)
+                
+        if df is None:
+            raise ValueError("Could not process file format")
+
+
+        # Ensure metadata table exists (for backward compatibility with old projects)
+        self._create_metadata_table(schema_name)
+
+        # Sanitize table name from filename
+        base_name = os.path.splitext(file_name)[0]
+        table_name = ingestor.sanitize_table_name(base_name)
+        
+        # Ingest with conflict handling
+        success, final_table_name, msg = ingestor.ingest_dataframe_with_metadata(
+            df, schema_name, table_name
+        )
+        
+        if success:
+            # Update metadata
+            self._register_table(schema_name, final_table_name, file_name, len(df))
+            return final_table_name
+        else:
+            raise Exception(msg)
+
+    def _register_table(self, schema_name: str, table_name: str, file_name: str, row_count: int):
+        """Register a new table in metadata."""
+        query = f"""
+            INSERT INTO {schema_name}.project_tables (table_name, file_name, row_count)
+            VALUES (%s, %s, %s);
+        """
+        self.db.execute_query(query, (table_name, file_name, row_count), fetch=False)
+
+
+
     
     def delete_project(self, schema_name: str) -> bool:
         """

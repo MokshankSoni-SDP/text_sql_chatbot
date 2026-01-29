@@ -57,6 +57,12 @@ class SchemaExtractor:
                 table_names = self._get_all_tables()
             
             schema_text = self._format_schema(table_names)
+            
+            # Helper for explicit Join hints
+            relationships = self._infer_relationships(table_names)
+            if relationships:
+                schema_text += "\n\nPOTENTIAL RELATIONSHIPS (JOIN HINTS):\n" + relationships
+                
             logger.info(f"Schema extracted for {len(table_names)} table(s)")
             return schema_text
             
@@ -82,7 +88,7 @@ class SchemaExtractor:
         try:
             results = self.db.execute_query(query, (self.schema_name,))
             table_names = [row[0] for row in results]
-            logger.debug(f"Found {len(table_names)} tables in schema '{self.schema_name}'")
+            logger.info(f"🔍 Found {len(table_names)} tables in schema '{self.schema_name}': {table_names}")
             return table_names
         except Exception as e:
             logger.error(f"Error fetching table names: {e}")
@@ -211,13 +217,94 @@ class SchemaExtractor:
                 table_names = self._get_all_tables()
             
             schema_text = self._format_enriched_schema(table_names)
+            
+            # Helper for explicit Join hints
+            relationships = self._infer_relationships(table_names)
+            if relationships:
+                schema_text += "\n\nPOTENTIAL RELATIONSHIPS (JOIN HINTS):\n" + relationships
+                
             logger.info(f"Enriched schema extracted for {len(table_names)} table(s)")
             return schema_text
             
         except Exception as e:
-            logger.error(f"Error extracting enriched schema: {e}")
-            raise
-    
+            logger.error(f"Error formulating schema: {e}")
+            return "Error extracting schema."
+
+    def _infer_relationships(self, table_names: List[str]) -> str:
+        """
+        Infer potential relationships between tables based on column names.
+        
+        Args:
+            table_names: List of tables to analyze
+            
+        Returns:
+            str: Description of potential joins
+        """
+        relationships = []
+        try:
+            # 1. Get all columns for all tables
+            table_columns = {} # table -> set(columns)
+            all_columns_map = {} # column -> list(tables)
+            
+            for table in table_names:
+                cols = self._get_table_columns(table)
+                col_names = {c['name'] for c in cols}
+                table_columns[table] = col_names
+                
+                for c_name in col_names:
+                    if c_name not in all_columns_map:
+                        all_columns_map[c_name] = []
+                    all_columns_map[c_name].append(table)
+            
+            # 2. Heuristic 1: Exact Column Match (e.g. product_id in both)
+            # Filter for likely keys (ending in _id, _key, _code or strict exact match of known entities)
+            for col, tables in all_columns_map.items():
+                if len(tables) > 1:
+                    # Filter out common generic columns
+                    if col in ['id', 'name', 'description', 'created_at', 'updated_at', 'timestamp', 'date']:
+                        continue
+                        
+                    # If it looks like a key
+                    if col.endswith(('_id', '_code', '_key')) or col in ['email', 'username', 'sku']:
+                        # Generate pairwise relationships
+                        for i in range(len(tables)):
+                            for j in range(i+1, len(tables)):
+                                relationships.append(f"- {tables[i]}.{col} ↔ {tables[j]}.{col}")
+                                
+            # 3. Heuristic 2: Table Name in Column (e.g. products.id ↔ sales.product_id)
+            for table in table_names:
+                # Singularize simple table names for guessing (products -> product)
+                base_name = table[:-1] if table.endswith('s') else table
+                id_col = f"{base_name}_id"
+                
+                # Check if this ID column exists in other tables
+                if id_col in all_columns_map:
+                    for other_table in all_columns_map[id_col]:
+                        if other_table != table:
+                             # Check if source table has 'id' or 'product_id'
+                             if 'id' in table_columns[table]:
+                                 relationships.append(f"- {table}.id ↔ {other_table}.{id_col}")
+                             elif id_col in table_columns[table]:
+                                 relationships.append(f"- {table}.{id_col} ↔ {other_table}.{id_col}")
+                                 
+            return "\n".join(list(set(relationships))) # remove duplicates
+            
+        except Exception as e:
+            logger.warning(f"Error inferring relationships: {e}")
+            return ""
+
+    def _format_schema(self, table_names: List[str]) -> str:
+        """
+        Format schema as simple text.
+        """
+        schema_parts = ["DATABASE SCHEMA:\n"]
+        for table_name in table_names:
+            columns = self._get_table_columns(table_name)
+            schema_parts.append(f"Table: {table_name}")
+            for col in columns:
+                schema_parts.append(f"  - {col['name']} ({col['type']})")
+        return "\n".join(schema_parts)
+
     def _format_enriched_schema(self, table_names: List[str]) -> str:
         """
         Format schema with enriched value information.

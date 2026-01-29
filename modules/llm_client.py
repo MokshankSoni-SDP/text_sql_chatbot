@@ -31,6 +31,43 @@ class GroqLLMClient:
         self.client = Groq(api_key=self.api_key)
         logger.info(f"Groq client initialized with model: {self.model}")
     
+    def _call_llm(self, messages: List[Dict], temperature: float = 0.1, max_tokens: int = 500) -> str:
+        """
+        Wrapper for LLM calls to track token usage.
+        
+        Args:
+            messages: List of message dictionaries
+            temperature: Sampling temperature
+            max_tokens: Maximum tokens to generate
+            
+        Returns:
+            str: Content of the response message
+        """
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens
+            )
+            
+            # Token Tracking Logic
+            if 'token_stats' in st.session_state:
+                usage = response.usage
+                if usage:
+                    st.session_state.token_stats['total_input_tokens'] += usage.prompt_tokens
+                    st.session_state.token_stats['total_output_tokens'] += usage.completion_tokens
+                    st.session_state.token_stats['max_tokens_single_call'] = max(
+                        st.session_state.token_stats['max_tokens_single_call'],
+                        usage.total_tokens
+                    )
+            
+            return response.choices[0].message.content.strip()
+            
+        except Exception as e:
+            logger.error(f"LLM API Call Error: {e}")
+            raise
+
     def summarize_text(self, text: str) -> str:
         """
         Intelligently summarize text using LLM to preserve key information.
@@ -46,8 +83,7 @@ class GroqLLMClient:
             return text
         
         try:
-            response = self.client.chat.completions.create(
-                model=self.model,
+            summary = self._call_llm(
                 messages=[
                     {
                         "role": "system",
@@ -67,7 +103,6 @@ class GroqLLMClient:
                 max_tokens=100
             )
             
-            summary = response.choices[0].message.content.strip()
             logger.info(f"Summarized text from {len(text)} to {len(summary)} characters")
             return summary
             
@@ -121,8 +156,7 @@ When in doubt, return NEEDS_DATABASE.
 
 Return ONLY one word: either "NEEDS_DATABASE" or "GENERAL_CHAT"."""
 
-            response = self.client.chat.completions.create(
-                model=self.model,
+            intent = self._call_llm(
                 messages=[
                     {
                         "role": "system",
@@ -141,9 +175,7 @@ Return ONLY one word: either "NEEDS_DATABASE" or "GENERAL_CHAT"."""
                 ],
                 temperature=0.0,  # More deterministic
                 max_tokens=10
-            )
-            
-            intent = response.choices[0].message.content.strip().upper()
+            ).upper()
             
             # Validate response
             if "NEEDS_DATABASE" in intent:
@@ -206,14 +238,12 @@ Return ONLY one word: either "NEEDS_DATABASE" or "GENERAL_CHAT"."""
                 "content": user_query
             })
             
-            response = self.client.chat.completions.create(
-                model=self.model,
+            answer = self._call_llm(
                 messages=messages,
                 temperature=0.7,
                 max_tokens=200
             )
             
-            answer = response.choices[0].message.content.strip()
             logger.info("Generated general chat response")
             return answer
             
@@ -247,8 +277,7 @@ Return ONLY one word: either "NEEDS_DATABASE" or "GENERAL_CHAT"."""
         prompt = self._build_sql_prompt(user_question, schema, chat_history, recent_query_results)
         
         try:
-            response = self.client.chat.completions.create(
-                model=self.model,
+            sql_query = self._call_llm(
                 messages=[
                     {
                         "role": "system",
@@ -272,7 +301,8 @@ Return ONLY one word: either "NEEDS_DATABASE" or "GENERAL_CHAT"."""
                             "   - If underspecified (e.g. 'best footwear'): Apply defaults (rating sort), do NOT block query.\n"
                             "   - Apply inferred filters ONLY if columns exist. Never invent columns.\n"
                             "6. CRITICALLY IMPORTANT: When filtering text columns, use ONLY the 'Possible Values' shown in the schema\n"
-                            "7. If the question cannot be answered with the given schema, return: SELECT 'Unable to generate query - insufficient schema information' AS error;"
+                            "7. When combining multiple OR conditions with AND conditions in SQL,ALWAYS use parentheses or IN (...) to avoid operator precedence bugs.\n"
+                            "8. If the question cannot be answered with the given schema, return: SELECT 'Unable to generate query - insufficient schema information' AS error;"
                         )
                     },
                     {
@@ -283,8 +313,6 @@ Return ONLY one word: either "NEEDS_DATABASE" or "GENERAL_CHAT"."""
                 temperature=0.1,
                 max_tokens=500
             )
-            
-            sql_query = response.choices[0].message.content.strip()
             
             # Remove markdown code blocks if present
             sql_query = self._clean_sql_output(sql_query)
@@ -352,8 +380,7 @@ Generate the corrected SQL query now:"""
         try:
             logger.info("🔄 Retrying query with corrective feedback...")
             
-            response = self.client.chat.completions.create(
-                model=self.model,
+            corrected_sql = self._call_llm(
                 messages=[
                     {
                         "role": "system",
@@ -373,7 +400,6 @@ Generate the corrected SQL query now:"""
                 max_tokens=500
             )
             
-            corrected_sql = response.choices[0].message.content.strip()
             corrected_sql = self._clean_sql_output(corrected_sql)
             
             logger.info(f"✅ Generated corrected query: {corrected_sql[:100]}...")
@@ -442,8 +468,7 @@ Generate the corrected SQL query now:"""
         try:
             logger.info(f"🔄 Retrying query due to error: {error_message[:100]}...")
             
-            response = self.client.chat.completions.create(
-                model=self.model,
+            corrected_sql = self._call_llm(
                 messages=[
                     {
                         "role": "system",
@@ -462,7 +487,6 @@ Generate the corrected SQL query now:"""
                 max_tokens=600
             )
             
-            corrected_sql = response.choices[0].message.content.strip()
             corrected_sql = self._clean_sql_output(corrected_sql)
             
             logger.info(f"✅ Generated corrected query after error: {corrected_sql[:100]}...")
@@ -503,8 +527,7 @@ Generate the corrected SQL query now:"""
         )
         
         try:
-            response = self.client.chat.completions.create(
-                model=self.model,
+            answer = self._call_llm(
                 messages=[
                     {
                         "role": "system",
@@ -528,7 +551,6 @@ Generate the corrected SQL query now:"""
                 max_tokens=300
             )
             
-            answer = response.choices[0].message.content.strip()
             logger.info("Generated natural language answer")
             return answer
             
@@ -583,8 +605,7 @@ Generate the corrected SQL query now:"""
             data_text += f"\n... and {len(sql_result) - max_rows} more rows not shown"
         
         try:
-            response = self.client.chat.completions.create(
-                model=self.model,
+            description = self._call_llm(
                 messages=[
                     {
                         "role": "system",
@@ -615,7 +636,6 @@ Generate the corrected SQL query now:"""
                 max_tokens=600
             )
             
-            description = response.choices[0].message.content.strip()
             logger.info(f"Generated descriptive narrative for {len(rows_to_describe)} rows")
             return description
             
@@ -695,7 +715,11 @@ Generate the corrected SQL query now:"""
             parts.append(chat_history)
             parts.append("")
         
-        parts.append(schema)
+        if schema:
+            parts.append(schema)
+        else:
+            parts.append("Error: No schema provided.")
+            
         parts.append("")
         parts.append(f"USER QUESTION: {user_question}")
         parts.append("")

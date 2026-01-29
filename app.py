@@ -524,15 +524,24 @@ def show_project_dashboard():
         st.markdown("</div>", unsafe_allow_html=True)
 
 
+
 def load_schema(schema_name: str):
     """Load enriched database schema for a specific project."""
     try:
+        logger.info(f"🔄 Attempting to load schema for: {schema_name}")
         schema = get_enriched_database_schema(schema_name=schema_name)
+        
+        if not schema:
+            logger.error(f"❌ Schema extraction returned empty string for {schema_name}")
+            return False, "Schema extraction returned empty result"
+            
         st.session_state.schema_text = schema
         st.session_state.db_connected = True
-        logger.info(f"✅ Loaded schema for: {schema_name}")
+        logger.info(f"✅ Loaded schema text (Length: {len(schema)} chars)")
+        logger.debug(f"Schema Preview: {schema[:200]}...")
         return True, schema
     except Exception as e:
+        logger.error(f"❌ Error loading schema: {e}", exc_info=True)
         st.session_state.db_connected = False
         return False, str(e)
 
@@ -567,12 +576,6 @@ def process_user_question(user_question: str, schema: str, schema_name: str):
     """
     HYBRID SEARCH PIPELINE: Intent Classification → Guardrails → Hybrid/SQL Search → Response.
     
-    This function integrates:
-    1. Intent decomposition (LLM-based JSON output)
-    2. Guardrail checks (clarification, out-of-scope)
-    3. Hybrid search (SQL + vector similarity) OR traditional SQL
-    4. Semantic-aware response generation
-    
     Args:
         user_question: User's natural language question
         schema: Database schema text  
@@ -582,13 +585,53 @@ def process_user_question(user_question: str, schema: str, schema_name: str):
         str: Final answer to display to user
     """
     try:
+        logger.info(f"▶️ Processing Question: '{user_question}'")
+        logger.info(f"   - Active Schema: {schema_name}")
+        logger.info(f"   - Schema Text Present: {bool(schema)}")
+        if schema:
+            logger.info(f"   - Schema Length: {len(schema)}")
+        else:
+            logger.warning("⚠️ WARNING: Schema text is EMPTY/NONE in process_user_question!")
+
         # Get dependencies
         chat_manager = get_chat_history_manager(schema_name=schema_name)
         llm_client = get_llm_client()
         intent_classifier = get_intent_classifier(llm_client)
         hybrid_search = get_hybrid_search_engine()
         guardrails = get_guardrails()
-        embedding_service = get_embedding_service()
+        
+        # Initialize token tracking
+        st.session_state.token_stats = {
+            "total_input_tokens": 0,
+            "total_output_tokens": 0,
+            "max_tokens_single_call": 0
+        }
+        
+        def display_token_stats():
+            stats = st.session_state.token_stats
+            if stats['total_input_tokens'] > 0:
+                st.markdown(f"""
+                <div style='background-color: #f0fdf4; padding: 10px; border-radius: 5px; border: 1px solid #bbf7d0; margin-top: 10px; font-size: 0.9em;'>
+                    <strong>Token Usage Summary:</strong><br>
+                    • Total input tokens: {stats['total_input_tokens']}<br>
+                    • Total output tokens: {stats['total_output_tokens']}<br>
+                    • Max tokens in a single LLM call: {stats['max_tokens_single_call']}
+                </div>
+                """, unsafe_allow_html=True)
+        
+        # Wrapped embedding service with caching and error handling
+        @st.cache_resource
+        def get_cached_embedding_service():
+            try:
+                from modules.embedding_service import get_embedding_service
+                return get_embedding_service()
+            except Exception as e:
+                logger.error(f"Failed to load embedding service: {e}")
+                return None
+
+        embedding_service = get_cached_embedding_service()
+        if not embedding_service:
+            st.error("⚠️ Semantic search unavailable (Model failed to load). Using SQL-only mode.")
         
         # Get chat history for context
         chat_history = chat_manager.format_history_for_llm(st.session_state.session_id, llm_client=llm_client)
@@ -607,6 +650,7 @@ def process_user_question(user_question: str, schema: str, schema_name: str):
             
             chat_manager.insert_message(st.session_state.session_id, "user", user_question, llm_client=llm_client)
             chat_manager.insert_message(st.session_state.session_id, "assistant", answer, llm_client=llm_client)
+            display_token_stats()
             return answer
             
         # ═══ STANDARD SQL QUERY PATH ═══
@@ -632,57 +676,59 @@ def process_user_question(user_question: str, schema: str, schema_name: str):
 
         # 2. Execute SQL
         with st.spinner("⚡ Executing query..."):
-            try:
-                from modules.db_connection import get_db_instance, DatabaseConnection
-                db = get_db_instance()
-                
-                # Check connection
-                if not db.connection_pool:
-                     st.error("Database not connected")
-                     return "Database connection lost."
+            from modules.db_connection import get_db_instance
+            db = get_db_instance()
+            
+            # Check connection
+            if not db.connection_pool:
+                 st.error("Database not connected")
+                 return "Database connection lost."
 
-                # Set search path to current project (CRITICAL)
-                # We need to ensure we query the correct schema
-                try:
-                    db.set_search_path(st.session_state.active_schema)
-                except Exception as e:
-                    st.error(f"Schema Connection Error: {e}")
-                    return "Could not connect to project schema."
-                
-                # Execute
-                results = db.execute_query(sql_query)
-                
-                # Get columns (hacky re-fetch or assume select *)
-                # Since execute_query just returns rows, we'll display as plain table
-                # For better UI, we should try to get columns.
-                
+            # Set search path to current project
+            try:
+                db.set_search_path(st.session_state.active_schema)
             except Exception as e:
-                # RETRY LOGIC FOR SQL ERRORS
+                st.error(f"Schema Connection Error: {e}")
+                return "Could not connect to project schema."
+            
+            # Retry Logic (Max 3 attempts)
+            max_retries = 3
+            attempt = 0
+            results = None
+            
+            while attempt <= max_retries:
                 try:
-                    st.warning(f"⚠️ SQL Execution Failed: {str(e)[:100]}... Retrying with self-correction.")
+                    logger.info(f"Executing SQL (Attempt {attempt+1}/{max_retries+1})")
+                    results = db.execute_query(sql_query)
+                    break # Success - exit loop
                     
-                    corrected_sql = llm_client.retry_query_on_error(
-                        failed_sql=sql_query,
-                        error_message=str(e),
-                        user_question=user_question,
-                        schema=schema,
-                        chat_history=chat_history,
-                        recent_query_results=st.session_state.get('recent_query_results', [])
-                    )
+                except Exception as e:
+                    attempt += 1
+                    logger.warning(f"SQL Execution Error (Attempt {attempt}): {e}")
                     
-                    # Show corrected SQL
-                    with st.expander("📝 Corrected SQL", expanded=True):
-                        st.code(corrected_sql, language="sql")
+                    if attempt > max_retries:
+                        st.error(f"❌ Execution failed after {max_retries} retries: {str(e)[:100]}...")
+                        return "I tried to fix the query multiple times but wasn't able to get it working. Please try rephrasing your question."
+                    
+                    st.warning(f"⚠️ SQL Error (Attempt {attempt}): {str(e)[:100]}... Self-correcting...")
+                    
+                    try:
+                        sql_query = llm_client.retry_query_on_error(
+                            failed_sql=sql_query,
+                            error_message=str(e),
+                            user_question=user_question,
+                            schema=schema,
+                            chat_history=chat_history,
+                            recent_query_results=st.session_state.get('recent_query_results', [])
+                        )
                         
-                    # Retry Execution
-                    results = db.execute_query(corrected_sql)
-                    
-                    # Update sql_query variable for answer generation context
-                    sql_query = corrected_sql
-                    
-                except Exception as retry_e:
-                    st.error(f"Execution Error: {retry_e}")
-                    return "Failed to execute the query on the database even after self-correction."
+                        # Show corrected SQL
+                        with st.expander(f"📝 Corrected SQL (Try {attempt})", expanded=True):
+                            st.code(sql_query, language="sql")
+                            
+                    except Exception as retry_e:
+                        st.error(f"Self-correction failed: {retry_e}")
+                        return "Failed during query correction."
         
         # 3. Handle Results
         if not results:
@@ -719,6 +765,8 @@ def process_user_question(user_question: str, schema: str, schema_name: str):
         chat_manager.insert_message(st.session_state.session_id, "user", user_question, llm_client=llm_client)
         chat_manager.insert_message(st.session_state.session_id, "assistant", answer, llm_client=llm_client)
         
+        
+        display_token_stats()
         return answer
 
     
@@ -881,13 +929,32 @@ def show_chat_interface():
         
         st.divider()
         
-        if st.button("← Back to Projects", use_container_width=True):
-            st.session_state.active_schema = None
-            st.session_state.current_project_name = None
-            st.session_state.messages = []
-            st.session_state.schema_text = None
-            st.session_state.db_connected = False
-            st.rerun()
+        if st.session_state.active_schema:
+            st.success(f"📂 Active Project: {st.session_state.current_project_name}")
+            
+            # Add Data Section
+            with st.expander("➕ Add Data to Project", expanded=False):
+                new_file = st.file_uploader("Upload CSV/Excel", type=['csv', 'xlsx', 'xls'], key="add_data_uploader")
+                if new_file is not None:
+                    if st.button("Upload File"):
+                        with st.spinner("Uploading and analyzing..."):
+                            try:
+                                pm = get_project_manager()
+                                table_name = pm.add_file_to_project(st.session_state.active_schema, new_file)
+                                st.success(f"✅ Added table: {table_name}")
+                                # Refresh schema text
+                                st.session_state.schema_text = get_enriched_database_schema(st.session_state.active_schema)
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Upload failed: {e}")
+            
+            if st.button("❌ Close Project"):
+                st.session_state.active_schema = None
+                st.session_state.current_project_name = None
+                st.session_state.messages = []
+                st.session_state.schema_text = None
+                st.session_state.db_connected = False
+                st.rerun()
         
         st.divider()
         
@@ -919,13 +986,13 @@ def show_chat_interface():
         # ═══ SCHEMA EDITOR (Moved to top for better visibility) ═══
         st.markdown("#### 📋 Schema Editor")
         
-        # Auto-load schema if not loaded
-        if not st.session_state.db_connected and st.session_state.active_schema:
+        # Auto-load schema if not loaded or missing
+        if (not st.session_state.db_connected or not st.session_state.schema_text) and st.session_state.active_schema:
             with st.spinner("🔄 Auto-loading schema..."):
                 success, result = load_schema(st.session_state.active_schema)
                 if success:
                     st.success("✅ Schema auto-loaded successfully!")
-                    st.rerun()
+                    # removed st.rerun() to prevent infinite loops
                 else:
                     st.error(f"❌ Auto-load failed: {result}")
         

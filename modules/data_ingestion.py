@@ -137,6 +137,74 @@ class DataIngestor:
             logger.error(error_msg)
             return False, error_msg
     
+    
+    def ingest_dataframe_with_metadata(self, df: pd.DataFrame, schema_name: str, base_table_name: str) -> Tuple[bool, str, str]:
+        """
+        Ingest dataframe with automatic table renaming on collision.
+        
+        Args:
+            df: DataFrame to ingest
+            schema_name: Target schema
+            base_table_name: Desired table name
+            
+        Returns:
+            Tuple[bool, str, str]: (success, final_table_name, message)
+        """
+        try:
+            # unique table name
+            final_table_name = self._get_unique_table_name(schema_name, base_table_name)
+            
+            # Sanitize columns
+            df.columns = [self.sanitize_column_name(c) for c in df.columns]
+            
+            # Create table
+            success, msg = self.create_table_from_dataframe(df, final_table_name, schema_name)
+            
+            if success:
+                return True, final_table_name, f"Successfully created {final_table_name}"
+            else:
+                return False, "", msg
+                
+        except Exception as e:
+            return False, "", str(e)
+
+    def _get_unique_table_name(self, schema_name: str, base_name: str) -> str:
+        """
+        Get a unique table name by appending suffixes if needed.
+        """
+        try:
+            from .db_connection import get_db_instance
+            db = get_db_instance()
+            
+            # Check if base name exists
+            if not self._table_exists(db, schema_name, base_name):
+                return base_name
+                
+            # Try suffixes _v2, _v3...
+            counter = 2
+            while True:
+                new_name = f"{base_name}_v{counter}"
+                if not self._table_exists(db, schema_name, new_name):
+                    logger.info(f"Table name collision for '{base_name}'. Renaming to '{new_name}'")
+                    return new_name
+                counter += 1
+        except Exception as e:
+            logger.error(f"Error checking unique table name: {e}")
+            # Fallback to random suffix if DB check fails
+            import uuid
+            return f"{base_name}_{str(uuid.uuid4())[:8]}"
+
+    def _table_exists(self, db, schema_name: str, table_name: str) -> bool:
+        """Check if table exists in schema."""
+        query = """
+            SELECT 1 
+            FROM information_schema.tables 
+            WHERE table_schema = %s 
+            AND table_name = %s
+        """
+        res = db.execute_query(query, (schema_name, table_name))
+        return len(res) > 0
+
     def ingest_json(self, file_path: str, schema_name: str, table_name: Optional[str] = None) -> Tuple[bool, str]:
         """
         Ingest JSON file into a schema.

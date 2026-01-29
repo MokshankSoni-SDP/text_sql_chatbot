@@ -600,23 +600,39 @@ hr {
     }
 }
 
-/* ============= HIDE STREAMLIT BRANDING ============= */
+/* ============= RESTORE STREAMLIT HEADER ============= */
 
-#MainMenu {
-    visibility: hidden !important;
+/* 1. Ensure Header is visible for Sidebar features */
+[data-testid="stHeader"] {
+    background: transparent !important;
+    visibility: visible !important;
+    z-index: 100 !important;
 }
 
-footer {
-    visibility: hidden !important;
+/* 2. Style the Sidebar Toggle (Make it visible but integrated) */
+[data-testid="stSidebarCollapsedControl"] {
+    display: block !important;
+    color: var(--text-primary) !important;
+    background-color: transparent !important;
 }
 
-/* Header visible to show sidebar toggle */
-/* header { visibility: hidden !important; } - Removed to fix sidebar bug */
-
-/* Hide hamburger menu specific items if needed, but keep header container */
-/* [data-testid="stHeader"] { display: none !important; } - Removed */
-
-/* Hide deploy button */
-[data-testid="stToolbar"] {
+/* 3. Hide only the 'Decoration' bar (rainbow line) */
+[data-testid="stDecoration"] {
     display: none !important;
+}
+
+/* 4. Hide 'Deploy' button but keep 'Settings' accessible via hamburger */
+/* [data-testid="stToolbar"] {
+    right: 3rem !important;
+    /* Move settings slightly if needed
+    display: none !important;
+    /* Keep widely hidden per user preference, but toggle must work 
+} */
+button[title="Deploy"] {
+    display: none !important;
+}
+
+/* 5. Ensure Sidebar itself is clean */
+section[data-testid="stSidebar"] {
+    border-right: 1px solid var(--border-color) !important;
 }

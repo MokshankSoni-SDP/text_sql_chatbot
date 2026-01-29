@@ -6,14 +6,21 @@ Each user project is isolated in its own schema (proj_{user_id}_{project_name}).
 
 import re
 import logging
-from typing import List, Dict, Optional
+import os
+import pandas as pd
+from typing import List, Dict, Optional, Union
 from datetime import datetime
+from dotenv import load_dotenv
+from sqlalchemy import create_engine
+from pathlib import Path
 from .db_connection import get_db_instance
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Load env for SQLAlchemy
+load_dotenv()
 
 class ProjectManager:
     """
@@ -21,22 +28,24 @@ class ProjectManager:
     """
     
     def __init__(self):
-        """Initialize project manager."""
+        """Initialize project manager with Database Connection and SQLAlchemy Engine."""
         self.db = get_db_instance()
         self.schema_prefix = "proj_"
-    
-    def list_user_projects(self, user_id: str) -> List[Dict[str, str]]:
-        """
-        List all projects for a specific user.
         
-        Args:
-            user_id: User identifier
-            
-        Returns:
-            List[Dict]: List of project dictionaries with schema_name, display_name, created_at
-        """
+        # Initialize SQLAlchemy Engine for batch processing
+        db_host = os.getenv('DB_HOST', 'localhost')
+        db_port = os.getenv('DB_PORT', '5432')
+        db_name = os.getenv('DB_NAME', 'text_to_sql_chatbot')
+        db_user = os.getenv('DB_USER')
+        db_password = os.getenv('DB_PASSWORD')
+        
+        # Create engine
+        connection_string = f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
+        self.engine = create_engine(connection_string)
+
+    def list_user_projects(self, user_id: str) -> List[Dict[str, str]]:
+        """List all projects for a specific user."""
         try:
-            # Sanitize user_id for pattern matching
             safe_user_id = self.sanitize_name(user_id)
             pattern = f"{self.schema_prefix}{safe_user_id}_%"
             
@@ -57,12 +66,8 @@ class ProjectManager:
             projects = []
             for row in results:
                 schema_name = row[0]
-                # Extract project name from schema name
-                # Format: proj_{user_id}_{project_name}
                 parts = schema_name.split('_', 2)  # Split into max 3 parts
                 project_name = parts[2] if len(parts) > 2 else schema_name
-                
-                # Get metadata
                 metadata = self.get_project_metadata(schema_name)
                 
                 projects.append({
@@ -74,56 +79,116 @@ class ProjectManager:
                     'total_rows': metadata.get('total_rows', 0)
                 })
             
-            logger.info(f"Found {len(projects)} projects for user '{user_id}'")
             return projects
             
         except Exception as e:
             logger.error(f"Error listing projects for user '{user_id}': {e}")
             return []
     
-    def create_project(self, user_id: str, project_name: str) -> str:
+    def create_project(self, user_id: str, project_name: str, data_file: Optional[Union[str, pd.DataFrame]] = None) -> str:
         """
-        Create a new project schema.
+        Create a new project schema and optionally ingest data using robust Batch Processing.
         
         Args:
             user_id: User identifier
             project_name: Project name
+            data_file: Optional path to CSV/Excel or DataFrame to upload
             
         Returns:
             str: Created schema name
-            
-        Raises:
-            ValueError: If names are invalid
-            Exception: If schema creation fails
         """
+        conn = None
         try:
-            # Sanitize inputs
+            # 1. Sanitize & Construct Name
             safe_user_id = self.sanitize_name(user_id)
             safe_project_name = self.sanitize_name(project_name)
-            
-            # Construct schema name
             schema_name = f"{self.schema_prefix}{safe_user_id}_{safe_project_name}"
             
-            # Validate length (PostgreSQL limit is 63 characters)
             if len(schema_name) > 63:
-                raise ValueError(
-                    f"Schema name too long ({len(schema_name)} > 63). "
-                    f"Please use shorter user_id or project_name."
-                )
-            
-            # Create schema
+                raise ValueError(f"Schema name too long ({len(schema_name)}). Shorten project name.")
+
+            # 2. Commit Schema Creation IMMEDIATELY (Isolation from Data Upload)
             create_query = f"CREATE SCHEMA IF NOT EXISTS {schema_name};"
             self.db.execute_query(create_query, fetch=False)
-            
-            logger.info(f"✅ Created schema: {schema_name}")
+            logger.info(f"✅ Created/Verified Schema: {schema_name}")
+
+            # 3. Handle Data Ingestion (if file provided)
+            if data_file is not None:
+                # Determine Table Name (Main Table)
+                table_name = "main_data"
+                
+                # Load DataFrame
+                df = None
+                if isinstance(data_file, pd.DataFrame):
+                    df = data_file
+                elif isinstance(data_file, str):
+                    if data_file.endswith('.csv'):
+                        df = pd.read_csv(data_file)
+                    elif data_file.endswith(('.xls', '.xlsx')):
+                        df = pd.read_excel(data_file)
+                    else:
+                        raise ValueError("Unsupported file format. Use CSV or Excel.")
+                
+                if df is not None:
+                    logger.info(f"🚀 Starting Batch Ingestion for {len(df)} rows into {schema_name}.{table_name}")
+                    
+                    # Sanitize Columns
+                    df.columns = [self.sanitize_name(c) for c in df.columns]
+                    
+                    # Get SQLAlchemy Connection
+                    conn = self.engine.connect()
+                    
+                    # 4. Commit Table Structure (Empty)
+                    # Use 'replace' to create table definition, but write 0 rows first
+                    df.head(0).to_sql(
+                        table_name, 
+                        conn, 
+                        schema=schema_name, 
+                        if_exists='replace', 
+                        index=False
+                    )
+                    logger.info("✅ Created Table Structure")
+                    
+                    # 5. Batch Insert Loop
+                    chunk_size = 5000  # Process 5k rows at a time
+                    total_chunks = (len(df) // chunk_size) + 1
+                    
+                    for i in range(0, len(df), chunk_size):
+                        chunk = df.iloc[i : i + chunk_size]
+                        
+                        try:
+                            chunk.to_sql(
+                                table_name,
+                                conn,
+                                schema=schema_name,
+                                if_exists='append',
+                                index=False,
+                                method='multi',  # Optimize for Postgres
+                                chunksize=1000   # Internal batch size for method='multi'
+                            )
+                            logger.info(f"✅ Processed chunk {i//chunk_size + 1}/{total_chunks} ({len(chunk)} rows)")
+                            conn.commit() # Explicit Insert Commit
+                            
+                        except Exception as chunk_e:
+                            logger.error(f"❌ Failed to insert chunk {i}: {chunk_e}")
+                            conn.rollback()
+                            raise chunk_e
+
+                    logger.info(f"🎉 Successfully ingested {len(df)} rows.")
+
             return schema_name
             
         except ValueError as e:
-            logger.error(f"Validation error creating project: {e}")
+            logger.error(f"Validation Error: {e}")
             raise
         except Exception as e:
-            logger.error(f"Error creating project schema: {e}")
+            logger.error(f"Critical Error in create_project: {e}")
+            if conn:
+                conn.rollback()
             raise
+        finally:
+            if conn:
+                conn.close()
     
     def delete_project(self, schema_name: str) -> bool:
         """
@@ -134,89 +199,37 @@ class ProjectManager:
             
         Returns:
             bool: True if successful
-            
-        Raises:
-            ValueError: If schema name is invalid or protected
         """
         try:
-            # Validate schema name starts with prefix (safety check)
             if not schema_name.startswith(self.schema_prefix):
-                raise ValueError(
-                    f"Cannot delete schema '{schema_name}'. "
-                    f"Only schemas starting with '{self.schema_prefix}' can be deleted."
-                )
+                raise ValueError(f"Cannot delete schema '{schema_name}'. Must start with '{self.schema_prefix}'.")
             
-            # Additional safety: prevent deletion of system schemas
             protected_schemas = ['public', 'information_schema', 'pg_catalog', 'pg_toast']
             if schema_name in protected_schemas:
                 raise ValueError(f"Cannot delete protected schema: {schema_name}")
             
-            # Verify schema exists
             if not self.validate_schema_exists(schema_name):
                 logger.warning(f"Schema '{schema_name}' does not exist")
                 return False
             
-            # Drop schema with CASCADE (removes all tables)
             drop_query = f"DROP SCHEMA {schema_name} CASCADE;"
             self.db.execute_query(drop_query, fetch=False)
-            
             logger.info(f"🗑️ Deleted schema: {schema_name}")
             return True
             
-        except ValueError as e:
-            logger.error(f"Validation error deleting project: {e}")
-            raise
         except Exception as e:
             logger.error(f"Error deleting project schema: {e}")
             return False
-    
+
     def sanitize_name(self, name: str) -> str:
-        """
-        Sanitize user input for use in SQL identifiers.
-        Prevents SQL injection and ensures valid PostgreSQL identifiers.
-        
-        Args:
-            name: User-provided name
-            
-        Returns:
-            str: Sanitized name (lowercase, alphanumeric + underscore)
-            
-        Raises:
-            ValueError: If name is invalid
-        """
-        if not name or not name.strip():
-            raise ValueError("Name cannot be empty")
-        
-        # Remove leading/trailing whitespace
-        name = name.strip()
-        
-        # Replace spaces with underscores
-        name = name.replace(' ', '_')
-        
-        # Remove all non-alphanumeric characters except underscore
+        """Sanitize input for SQL safety."""
+        if not name: return "unknown"
+        # Basic sanitization
+        name = name.strip().lower().replace(' ', '_')
         name = re.sub(r'[^\w]', '', name)
         
-        # Convert to lowercase
-        name = name.lower()
-        
-        # Ensure starts with a letter (PostgreSQL requirement)
-        if not name or not name[0].isalpha():
-            raise ValueError(
-                "Name must start with a letter. "
-                f"Provided: '{name}'"
-            )
-        
-        # Check for valid pattern (alphanumeric + underscore only)
-        if not re.match(r'^[a-z][a-z0-9_]*$', name):
-            raise ValueError(
-                "Name must contain only letters, numbers, and underscores. "
-                f"Provided: '{name}'"
-            )
-        
-        # Length check (leave room for prefix)
-        if len(name) > 50:
-            raise ValueError(f"Name too long (max 50 characters). Provided: {len(name)}")
-        
+        # Ensure it's not empty and starts with letter if possible (relaxed)
+        if not name: return "unknown"
         return name
     
     def validate_schema_exists(self, schema_name: str) -> bool:

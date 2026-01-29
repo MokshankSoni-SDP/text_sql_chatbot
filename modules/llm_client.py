@@ -473,6 +473,9 @@ Generate the corrected SQL query now:"""
             row_dict = dict(zip(column_names, row))
             data_text += f"\nRow {i}:\n"
             for col, val in row_dict.items():
+                # EXCLUDE EMBEDDINGS from narrative
+                if 'embedding' in col.lower():
+                    continue
                 data_text += f"  - {col}: {val}\n"
         
         if len(sql_result) > max_rows:
@@ -550,8 +553,13 @@ Generate the corrected SQL query now:"""
             for row_idx, row in enumerate(query_data['results'][:3], 1):
                 row_items = []
                 for col, val in zip(query_data['columns'], row):
+                    # EXCLUDE EMBEDDINGS (User Request - Critical for tokens)
+                    if 'embedding' in col.lower():
+                        continue
+                        
                     # Aggressively truncate long values
                     val_str = str(val)[:30]
+                    
                     # Skip empty/null values to save tokens
                     if val_str and val_str.lower() != 'none':
                         row_items.append(f"{col}={val_str}")

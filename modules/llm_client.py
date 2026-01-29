@@ -633,7 +633,10 @@ Generate the corrected SQL query now:"""
             # Show first few rows
             max_rows = min(10, len(sql_result))
             for i, row in enumerate(sql_result[:max_rows]):
-                parts.append(f"Row {i+1}: {row}")
+                # Safe truncate string representation of each value to prevent huge embeddings
+                # Since column names might be missing, this heuristic saves us.
+                safe_row = [str(val)[:100] for val in row]
+                parts.append(f"Row {i+1}: {tuple(safe_row)}")
             
             if len(sql_result) > max_rows:
                 parts.append(f"... and {len(sql_result) - max_rows} more rows")

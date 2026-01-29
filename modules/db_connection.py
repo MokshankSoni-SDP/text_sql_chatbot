@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from typing import Optional, Any
 import logging
 from pathlib import Path
+import streamlit as st
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -295,12 +296,11 @@ class DatabaseConnection:
 _db_instance: Optional[DatabaseConnection] = None
 
 
+@st.cache_resource
 def get_db_instance() -> DatabaseConnection:
     """
     Get or create the global database instance.
-    
-    Returns:
-        DatabaseConnection: Global database connection instance
+    Cached by Streamlit to persist connection pool across reruns.
     """
     global _db_instance
     if _db_instance is None:

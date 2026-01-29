@@ -3,7 +3,9 @@ from typing import List, Dict
 from datetime import datetime
 from dotenv import load_dotenv
 import logging
+import logging
 from pathlib import Path
+import streamlit as st
 from .db_connection import get_db_instance
 
 # Load environment variables from project root
@@ -310,9 +312,11 @@ class ChatHistoryManager:
 
 
 
+@st.cache_resource
 def get_chat_history_manager(schema_name: str = 'public') -> ChatHistoryManager:
     """
     Get chat history manager instance.
+    Cached per schema to avoid repeated table validation queries.
     
     Args:
         schema_name: Schema to use for chat history (default: 'public')

@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 import logging
 from pathlib import Path
 from groq import Groq
+import streamlit as st
 
 # Load environment variables from project root
 current_dir = Path(__file__).resolve().parent.parent
@@ -672,9 +673,11 @@ Generate the corrected SQL query now:"""
         return sql.strip()
 
 
+@st.cache_resource
 def get_llm_client() -> GroqLLMClient:
     """
     Get Groq LLM client instance.
+    Cached explicitly to avoid component re-initialization.
     
     Returns:
         GroqLLMClient: LLM client instance

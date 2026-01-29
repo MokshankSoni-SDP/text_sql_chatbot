@@ -13,6 +13,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from pathlib import Path
+import streamlit as st
 from .db_connection import get_db_instance
 
 # Configure logging
@@ -358,9 +359,11 @@ class ProjectManager:
             return []
 
 
+@st.cache_resource
 def get_project_manager() -> ProjectManager:
     """
     Get project manager instance.
+    Cached explicitly to reuse SQLAlchemy engine.
     
     Returns:
         ProjectManager: Project manager instance

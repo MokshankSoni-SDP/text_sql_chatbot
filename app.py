@@ -80,7 +80,7 @@ logger = logging.getLogger(__name__)
 def initialize_session_state():
     """Initialize Streamlit session state variables."""
     if 'session_id' not in st.session_state:
-        st.session_state.session_id = str(uuid.uuid4())
+        st.session_state.session_id = None  # Will be set by sidebar logic
     
     if 'user_id' not in st.session_state:
         st.session_state.user_id = None
@@ -743,6 +743,73 @@ def show_chat_interface():
             </div>
         """, unsafe_allow_html=True)
         
+        # ═══ CHAT SESSIONS ═══
+        st.markdown("#### 💬 Chat History")
+        
+        try:
+             chat_manager = get_chat_history_manager(st.session_state.active_schema)
+             
+             # Auto-initialize session if None (First Load)
+             if st.session_state.session_id is None:
+                 sessions = chat_manager.get_all_sessions()
+                 if sessions:
+                     sid = sessions[0]['id']
+                     st.session_state.session_id = sid
+                     # Load history
+                     msgs = chat_manager.get_recent_messages(sid, limit=50)
+                     st.session_state.messages = [{"role": m['role'], "content": m['content']} for m in msgs]
+                 else:
+                     new_id = str(uuid.uuid4())
+                     st.session_state.session_id = new_id
+                     chat_manager.create_session(new_id)
+                     st.session_state.messages = []
+
+             # New Chat Button
+             if st.button("➕ New Chat", use_container_width=True, type="primary"):
+                  new_id = str(uuid.uuid4())
+                  st.session_state.session_id = new_id
+                  chat_manager.create_session(new_id)
+                  st.session_state.messages = []
+                  st.session_state.recent_query_results = []
+                  st.rerun()
+
+             # Session List
+             sessions = chat_manager.get_all_sessions()
+             
+             if sessions:
+                 st.markdown("<div style='max-height: 300px; overflow-y: auto; margin-bottom: 1rem;'>", unsafe_allow_html=True)
+                 for sess in sessions:
+                     col1, col2 = st.columns([0.85, 0.15])
+                     
+                     # Active formatting
+                     is_active = sess['id'] == st.session_state.session_id
+                     label = sess['name']
+                     if len(label) > 23: label = label[:20] + "..."
+                     
+                     label_text = f"🔵 {label}" if is_active else label
+                         
+                     if col1.button(label_text, key=f"sess_{sess['id']}", use_container_width=True, help=sess['created_at']):
+                         st.session_state.session_id = sess['id']
+                         # Load messages
+                         msgs = chat_manager.get_recent_messages(sess['id'], limit=50)
+                         st.session_state.messages = [{"role": m['role'], "content": m['content']} for m in msgs]
+                         st.rerun()
+                         
+                     if col2.button("🗑️", key=f"del_{sess['id']}", help="Delete Session"):
+                         chat_manager.delete_session(sess['id'])
+                         if is_active:
+                             st.session_state.session_id = None
+                             st.session_state.messages = []
+                         st.rerun()
+                 st.markdown("</div>", unsafe_allow_html=True)
+             else:
+                 st.caption("No history yet.")
+
+        except Exception as e:
+             st.error(f"Error loading sessions: {e}")
+             
+        st.divider()
+
         # ═══ PROJECT SWITCHER ═══
         st.markdown("#### 🔄 Project Switcher")
         try:

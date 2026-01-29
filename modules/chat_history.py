@@ -22,24 +22,33 @@ class ChatHistoryManager:
     """
     
     def __init__(self, schema_name: str = 'public'):
-        """Initialize chat history manager.
-        
-        Args:
-            schema_name: Schema to use for chat history (default: 'public')
-        """
+        """Initialize chat history manager with session support."""
         self.db = get_db_instance()
         self.schema_name = schema_name
         self.history_limit = int(os.getenv('CHAT_HISTORY_LIMIT', '10'))
         
-        # Ensure chat_history table exists in this schema
-        self.ensure_chat_history_table()
-    
-    def ensure_chat_history_table(self):
+        # Ensure tables exist
+        self.ensure_tables()
+
+    def ensure_tables(self):
         """
-        Create chat_history table in the schema if it doesn't exist.
+        Create chat_sessions and chat_history tables in the schema.
+        Handles migration basics implicitly.
         """
         try:
-            query = f"""
+            # 1. Create Sessions Table
+            sessions_query = f"""
+                CREATE TABLE IF NOT EXISTS {self.schema_name}.chat_sessions (
+                    id VARCHAR(255) PRIMARY KEY,
+                    project_schema VARCHAR(255),
+                    name TEXT DEFAULT 'New Chat',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """
+            self.db.execute_query(sessions_query, fetch=False)
+            
+            # 2. Create History Table
+            history_query = f"""
                 CREATE TABLE IF NOT EXISTS {self.schema_name}.chat_history (
                     id SERIAL PRIMARY KEY,
                     session_id VARCHAR(255) NOT NULL,
@@ -48,34 +57,105 @@ class ChatHistoryManager:
                     timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
                 );
             """
-            self.db.execute_query(query, fetch=False)
+            self.db.execute_query(history_query, fetch=False)
             
-            # Create indexes if they don't exist
+            # 3. Add FK Constraint if missing (Safe Migration)
+            try:
+                # Check if FK exists
+                fk_check = f"""
+                    SELECT constraint_name 
+                    FROM information_schema.table_constraints 
+                    WHERE table_schema = '{self.schema_name}' 
+                    AND table_name = 'chat_history' 
+                    AND constraint_type = 'FOREIGN KEY';
+                """
+                constraints = self.db.execute_query(fk_check)
+                if not constraints:
+                     # Attempt to add FK. might fail if data mismatch.
+                     alter_query = f"""
+                        ALTER TABLE {self.schema_name}.chat_history 
+                        ADD CONSTRAINT fk_session 
+                        FOREIGN KEY (session_id) 
+                        REFERENCES {self.schema_name}.chat_sessions(id) 
+                        ON DELETE CASCADE;
+                     """
+                     self.db.execute_query(alter_query, fetch=False)
+            except Exception as e:
+                logger.warning(f"Could not add FK constraint (orphan data likely): {e}")
+
+            # Create indexes
             index_query = f"""
                 CREATE INDEX IF NOT EXISTS idx_chat_history_session 
                 ON {self.schema_name}.chat_history(session_id);
             """
             self.db.execute_query(index_query, fetch=False)
             
-            logger.debug(f"Ensured chat_history table exists in schema: {self.schema_name}")
+            logger.debug(f"Ensured chat tables exist in schema: {self.schema_name}")
             
         except Exception as e:
-            logger.warning(f"Could not create chat_history table in {self.schema_name}: {e}")
+            logger.error(f"Error initializing chat tables in {self.schema_name}: {e}")
+
+    # ================= SESSION MANAGEMENT =================
+    
+    def create_session(self, session_id: str, name: str = "New Chat") -> bool:
+        """Create a new chat session."""
+        try:
+            query = f"""
+                INSERT INTO {self.schema_name}.chat_sessions (id, name, created_at)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (id) DO NOTHING;
+            """
+            self.db.execute_query(query, (session_id, name, datetime.now()), fetch=False)
+            return True
+        except Exception as e:
+            logger.error(f"Error creating session {session_id}: {e}")
+            return False
+
+    def get_all_sessions(self) -> List[Dict]:
+        """List all chat sessions for this schema."""
+        try:
+            query = f"""
+                SELECT id, name, created_at 
+                FROM {self.schema_name}.chat_sessions
+                ORDER BY created_at DESC;
+            """
+            results = self.db.execute_query(query)
+            return [
+                {'id': row[0], 'name': row[1], 'created_at': row[2].strftime("%Y-%m-%d %H:%M") if row[2] else ""} 
+                for row in results
+            ]
+        except Exception as e:
+            logger.error(f"Error fetching sessions: {e}")
+            return []
+
+    def delete_session(self, session_id: str) -> bool:
+        """Delete a session."""
+        try:
+            del_hist = f"DELETE FROM {self.schema_name}.chat_history WHERE session_id = %s;"
+            self.db.execute_query(del_hist, (session_id,), fetch=False)
+            
+            del_sess = f"DELETE FROM {self.schema_name}.chat_sessions WHERE id = %s;"
+            self.db.execute_query(del_sess, (session_id,), fetch=False)
+            logger.info(f"🗑️ Deleted session {session_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Error deleting session {session_id}: {e}")
+            return False
+            
+    def update_session_name(self, session_id: str, new_name: str) -> bool:
+        """Update the display name of a session."""
+        try:
+            query = f"UPDATE {self.schema_name}.chat_sessions SET name = %s WHERE id = %s;"
+            self.db.execute_query(query, (new_name, session_id), fetch=False)
+            return True
+        except Exception as e:
+            logger.error(f"Error updating session name: {e}")
+            return False
     
     def insert_message(self, session_id: str, role: str, content: str, llm_client=None) -> bool:
         """
         Insert a chat message into the database.
-        Stores the FULL content (including detailed Data Overview sections).
-        Summarization happens only when retrieving for LLM context.
-        
-        Args:
-            session_id: Unique session identifier
-            role: Message role ('user' or 'assistant')
-            content: Message content (full version)
-            llm_client: Optional LLM client (not used for insert, kept for compatibility)
-            
-        Returns:
-            bool: True if successful, False otherwise
+        Automatically creates the session if it doesn't exist (Self-Healing).
         """
         query = f"""
             INSERT INTO {self.schema_name}.chat_history (session_id, role, content, timestamp)
@@ -83,27 +163,38 @@ class ChatHistoryManager:
         """
         
         try:
+            # Ensure session exists first (Foreign Key integirty)
+            self.create_session(session_id, "New Chat")
+            
+            # Insert Message
             self.db.execute_query(
                 query,
                 (session_id, role, content, datetime.now()),
                 fetch=False
             )
             logger.info(f"✅ Inserted {role} message ({len(content)} chars) for session {session_id[:8]}...")
+            
+            # Auto-rename session logic could go here (e.g. use LLM to name chat after first user msg)
+            if role == 'user':
+                self._maybe_rename_session(session_id, content)
+                
             return True
         except Exception as e:
-            error_msg = str(e).lower()
-            
-            # Check for common table-related errors
-            if 'does not exist' in error_msg or 'relation' in error_msg:
-                logger.error(f"❌ chat_history table does not exist! Run fix_chat_history.sql to create it.")
-                logger.error(f"   Error: {e}")
-            elif 'permission' in error_msg:
-                logger.error(f"❌ Permission denied to insert into chat_history table")
-                logger.error(f"   Error: {e}")
-            else:
-                logger.error(f"❌ Error inserting message: {e}")
-            
+            logger.error(f"Error inserting message: {e}")
             return False
+
+    def _maybe_rename_session(self, session_id: str, first_message: str):
+        """Renames session based on first user question (Simple logic)."""
+        try:
+            # Check if name is still default
+            check = f"SELECT name FROM {self.schema_name}.chat_sessions WHERE id = %s;"
+            res = self.db.execute_query(check, (session_id,))
+            if res and res[0][0] == 'New Chat':
+                # Generate simple title (first 30 chars)
+                new_title = first_message[:30] + "..." if len(first_message) > 30 else first_message
+                self.update_session_name(session_id, new_title)
+        except:
+            pass # Non-critical
     
     def get_recent_messages(self, session_id: str, limit: int = None) -> List[Dict[str, str]]:
         """

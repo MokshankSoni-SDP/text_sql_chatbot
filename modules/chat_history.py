@@ -199,9 +199,9 @@ class ChatHistoryManager:
             # Aggressive summarization to save tokens (User Request)
             should_summarize = False
             
-            if role == 'ASSISTANT' and len(content) > 150:
+            if role == 'ASSISTANT' and len(content) > 500:
                 should_summarize = True
-            elif role == 'USER' and len(content) > 300:
+            elif role == 'USER' and len(content) > 500:
                 should_summarize = True
                 
             if should_summarize and llm_client is not None:

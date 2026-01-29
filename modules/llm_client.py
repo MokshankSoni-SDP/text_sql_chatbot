@@ -383,6 +383,95 @@ Generate the corrected SQL query now:"""
             logger.error(f"Error generating corrected SQL: {e}")
             raise
 
+    def retry_query_on_error(
+        self,
+        failed_sql: str,
+        error_message: str,
+        user_question: str,
+        schema: str,
+        chat_history: str = "",
+        recent_query_results: List[Dict] = None
+    ) -> str:
+        """
+        Retry SQL generation when execution fails with a database error.
+        
+        Args:
+            failed_sql: The SQL query that caused the error
+            error_message: The error message returned by the database
+            user_question: Original user question
+            schema: Database schema information
+            chat_history: Previous conversation context
+            recent_query_results: Recent query results (optional)
+            
+        Returns:
+            str: Corrected SQL query
+        """
+        # Build context parts
+        context_parts = []
+        
+        if recent_query_results:
+            context_parts.append(self._build_query_results_context(recent_query_results))
+            context_parts.append("")
+        
+        corrective_prompt = f"""The previous query failed to execute with the following error.
+        
+FAILED QUERY:
+{failed_sql}
+
+ERROR MESSAGE:
+{error_message}
+
+ORIGINAL QUESTION:
+{user_question}
+
+{chr(10).join(context_parts)}
+
+{schema}
+
+{chat_history if chat_history else ''}
+
+CRITICAL INSTRUCTIONS FOR RETRY:
+1. Analyze the ERROR MESSAGE to understand what went wrong (syntax error, missing column, wrong type, etc.)
+2. If column does not exist, check the schema for the correct column name.
+3. If syntax error, fix the SQL syntax for PostgreSQL.
+4. Generate a CORRECTED query that solves the specific error.
+5. Return ONLY the corrected SQL query, no explanations.
+
+Generate the corrected SQL query now:"""
+
+        try:
+            logger.info(f"🔄 Retrying query due to error: {error_message[:100]}...")
+            
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are a SQL expert fixing a broken query. "
+                            "Analyze the database error message and fix the SQL syntax or logic. "
+                            "Return ONLY the corrected SQL query, no explanations."
+                        )
+                    },
+                    {
+                        "role": "user",
+                        "content": corrective_prompt
+                    }
+                ],
+                temperature=0.1,
+                max_tokens=600
+            )
+            
+            corrected_sql = response.choices[0].message.content.strip()
+            corrected_sql = self._clean_sql_output(corrected_sql)
+            
+            logger.info(f"✅ Generated corrected query after error: {corrected_sql[:100]}...")
+            return corrected_sql
+            
+        except Exception as e:
+            logger.error(f"Error generating corrected SQL after error: {e}")
+            raise
+
     
     def result_to_english(
         self,

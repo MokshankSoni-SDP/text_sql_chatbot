@@ -657,8 +657,32 @@ def process_user_question(user_question: str, schema: str, schema_name: str):
                 # For better UI, we should try to get columns.
                 
             except Exception as e:
-                st.error(f"Execution Error: {e}")
-                return "Failed to execute the query on the database."
+                # RETRY LOGIC FOR SQL ERRORS
+                try:
+                    st.warning(f"⚠️ SQL Execution Failed: {str(e)[:100]}... Retrying with self-correction.")
+                    
+                    corrected_sql = llm_client.retry_query_on_error(
+                        failed_sql=sql_query,
+                        error_message=str(e),
+                        user_question=user_question,
+                        schema=schema,
+                        chat_history=chat_history,
+                        recent_query_results=st.session_state.get('recent_query_results', [])
+                    )
+                    
+                    # Show corrected SQL
+                    with st.expander("📝 Corrected SQL", expanded=True):
+                        st.code(corrected_sql, language="sql")
+                        
+                    # Retry Execution
+                    results = db.execute_query(corrected_sql)
+                    
+                    # Update sql_query variable for answer generation context
+                    sql_query = corrected_sql
+                    
+                except Exception as retry_e:
+                    st.error(f"Execution Error: {retry_e}")
+                    return "Failed to execute the query on the database even after self-correction."
         
         # 3. Handle Results
         if not results:
@@ -671,8 +695,18 @@ def process_user_question(user_question: str, schema: str, schema_name: str):
 
         # 4. Display Results
         with st.expander("📊 Query Results", expanded=True):
-             st.dataframe(pd.DataFrame(results))
+             df_results = pd.DataFrame(results)
+             st.dataframe(df_results)
              st.caption(f"Found {len(results)} rows")
+             
+             # CSV Download
+             csv = df_results.to_csv(index=False).encode('utf-8')
+             st.download_button(
+                 label="📥 Download Results as CSV",
+                 data=csv,
+                 file_name=f"query_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                 mime="text/csv",
+             )
 
         # 5. Generate Answer
         with st.spinner("📝 Analyzing results..."):

@@ -610,14 +610,11 @@ footer {
     visibility: hidden !important;
 }
 
-header {
-    visibility: hidden !important;
-}
+/* Header visible to show sidebar toggle */
+/* header { visibility: hidden !important; } - Removed to fix sidebar bug */
 
-/* Hide hamburger menu */
-[data-testid="stHeader"] {
-    display: none !important;
-}
+/* Hide hamburger menu specific items if needed, but keep header container */
+/* [data-testid="stHeader"] { display: none !important; } - Removed */
 
 /* Hide deploy button */
 [data-testid="stToolbar"] {
